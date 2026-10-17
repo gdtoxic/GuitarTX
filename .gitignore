@@ -1,0 +1,26 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+*.ipch
+Builds/**/x64/
+Builds/**/Win32/
+Builds/**/Debug/
+Builds/**/Release/
+
+# Сборочные артефакты
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.tlog
+*.log
+
+# Локальные бэкапы (история теперь в git)
+Source/backups/
+
+# macOS / прочее
+.DS_Store
+Thumbs.db

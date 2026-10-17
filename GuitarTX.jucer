@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="Wg1L62" name="GuitarTX" projectType="guiapp" useAppConfig="0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1">
+  <MAINGROUP id="WBZhkT" name="GuitarTX">
+    <GROUP id="{056E7338-7FB1-568E-9E02-5A011290C829}" name="Source">
+      <FILE id="H6h9lE" name="Main.cpp" compile="1" resource="0" file="Source/Main.cpp"/>
+      <FILE id="B2rgyg" name="MainComponent.h" compile="0" resource="0" file="Source/MainComponent.h"/>
+      <FILE id="qFxFIx" name="MainComponent.cpp" compile="1" resource="0"
+            file="Source/MainComponent.cpp"/>
+      <FILE id="CRFAZR" name="AudioEngine.cpp" compile="1" resource="0" file="Source/AudioEngine.cpp"/>
+      <FILE id="EELGLt" name="AudioEngine.h" compile="0" resource="0" file="Source/AudioEngine.h"/>
+      <FILE id="wiG1HY" name="GainProcessor.h" compile="0" resource="0" file="Source/GainProcessor.h"/>
+      <FILE id="EpfqrF" name="GainProcessor.cpp" compile="1" resource="0"
+            file="Source/GainProcessor.cpp"/>
+      <FILE id="BCzqkh" name="NoiseGateProcessor.cpp" compile="1" resource="0"
+            file="Source/NoiseGateProcessor.cpp"/>
+      <FILE id="EW1eFN" name="NoiseGateProcessor.h" compile="0" resource="0"
+            file="Source/NoiseGateProcessor.h"/>
+      <FILE id="gcUqIz" name="MeterProcessor.h" compile="0" resource="0"
+            file="Source/MeterProcessor.h"/>
+      <FILE id="szzvtn" name="EffectBase.h" compile="0" resource="0" file="Source/EffectBase.h"/>
+      <FILE id="eWxj6E" name="LevelMeter.h" compile="0" resource="0" file="Source/LevelMeter.h"/>
+      <FILE id="ZN49xL" name="OverdriveProcessor.cpp" compile="1" resource="0"
+            file="Source/OverdriveProcessor.cpp"/>
+      <FILE id="mAMGAO" name="OverdriveProcessor.h" compile="0" resource="0"
+            file="Source/OverdriveProcessor.h"/>
+      <FILE id="lrsQAh" name="CabinetProcessor.cpp" compile="1" resource="0"
+            file="Source/CabinetProcessor.cpp"/>
+      <FILE id="cN6ksJ" name="CabinetProcessor.h" compile="0" resource="0"
+            file="Source/CabinetProcessor.h"/>
+      <FILE id="OzNPkA" name="AppSettings.h" compile="0" resource="0" file="Source/AppSettings.h"/>
+      <FILE id="LtIFkv" name="AudioSettingsWindow.h" compile="0" resource="0"
+            file="Source/AudioSettingsWindow.h"/>
+      <FILE id="OdKDMQ" name="ProcessorBase.h" compile="0" resource="0" file="Source/ProcessorBase.h"/>
+      <FILE id="zkAlva" name="EffectBase.cpp" compile="1" resource="0" file="Source/EffectBase.cpp"/>
+      <FILE id="wMscrv" name="FadeProcessor.h" compile="0" resource="0" file="Source/FadeProcessor.h"/>
+      <FILE id="ZLZIzL" name="EffectRegistry.h" compile="0" resource="0" file="Source/EffectRegistry.h"/>
+      <FILE id="iTMESE" name="EffectRegistry.cpp" compile="1" resource="0" file="Source/EffectRegistry.cpp"/>
+      <FILE id="sWhdHR" name="EffectPanel.h" compile="0" resource="0" file="Source/EffectPanel.h"/>
+      <FILE id="mwImIY" name="EffectPanel.cpp" compile="1" resource="0" file="Source/EffectPanel.cpp"/>
+      <FILE id="AcFehS" name="RackComponent.h" compile="0" resource="0" file="Source/RackComponent.h"/>
+      <FILE id="MVIGKS" name="RackComponent.cpp" compile="1" resource="0" file="Source/RackComponent.cpp"/>
+      <FILE id="ATTiGG" name="Biquad.h" compile="0" resource="0" file="Source/Biquad.h"/>
+      <FILE id="uVsmMx" name="DistortionProcessor.h" compile="0" resource="0" file="Source/DistortionProcessor.h"/>
+      <FILE id="IBFkNX" name="DistortionProcessor.cpp" compile="1" resource="0" file="Source/DistortionProcessor.cpp"/>
+      <FILE id="rXUANW" name="PresetManager.h" compile="0" resource="0" file="Source/PresetManager.h"/>
+      <FILE id="XlFRPT" name="PresetManager.cpp" compile="1" resource="0" file="Source/PresetManager.cpp"/>
+      <FILE id="DxsObF" name="PresetBar.h" compile="0" resource="0" file="Source/PresetBar.h"/>
+      <FILE id="cMqkke" name="PresetBar.cpp" compile="1" resource="0" file="Source/PresetBar.cpp"/>
+      <FILE id="zuRqNz" name="GuitarTXLookAndFeel.h" compile="0" resource="0" file="Source/GuitarTXLookAndFeel.h"/>
+      <FILE id="dIsZyY" name="SubProcessor.h" compile="0" resource="0" file="Source/SubProcessor.h"/>
+      <FILE id="kuylqg" name="SubProcessor.cpp" compile="1" resource="0" file="Source/SubProcessor.cpp"/>
+      <FILE id="JXbsUv" name="ChaosProcessor.h" compile="0" resource="0" file="Source/ChaosProcessor.h"/>
+      <FILE id="TKHpCJ" name="ChaosProcessor.cpp" compile="1" resource="0" file="Source/ChaosProcessor.cpp"/>
+      <FILE id="efCOhp" name="MasterProcessor.h" compile="0" resource="0" file="Source/MasterProcessor.h"/>
+      <FILE id="DSpOcE" name="MasterProcessor.cpp" compile="1" resource="0" file="Source/MasterProcessor.cpp"/>
+      <FILE id="tmSpH1" name="SpectrumTools.h" compile="0" resource="0" file="Source/SpectrumTools.h"/>
+      <FILE id="tmSpC1" name="SpectrumTools.cpp" compile="1" resource="0" file="Source/SpectrumTools.cpp"/>
+      <FILE id="tmTmH1" name="ToneMatchProcessor.h" compile="0" resource="0" file="Source/ToneMatchProcessor.h"/>
+      <FILE id="tmTmC1" name="ToneMatchProcessor.cpp" compile="1" resource="0" file="Source/ToneMatchProcessor.cpp"/>
+    </GROUP>
+  </MAINGROUP>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_processors_headless" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="0"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_dsp" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_ASIO="1" JUCE_ASIO_USE_EXTERNAL_SDK="0"/>
+  <EXPORTFORMATS>
+    <VS2026 targetFolder="Builds/VisualStudio2026">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="GuitarTX"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="GuitarTX"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_core" path="C:/Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="C:/Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="C:/Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="C:/Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="C:/Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_basics" path="C:/Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="C:/Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="C:/Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="C:/Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors_headless" path="C:/Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="C:/Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="C:/Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_dsp" path="C:/Program Files/JUCE/modules"/>
+      </MODULEPATHS>
+    </VS2026>
+  </EXPORTFORMATS>
+</JUCERPROJECT>
