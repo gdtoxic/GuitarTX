@@ -859,28 +859,16 @@
     <ClCompile Include="..\..\Source\AudioEngine.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\Source\MasterProcessor.cpp">
+    <ClCompile Include="..\..\Source\GainProcessor.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\Source\SpectrumTools.cpp">
+    <ClCompile Include="..\..\Source\NoiseGateProcessor.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\Source\ToneMatchProcessor.cpp">
+    <ClCompile Include="..\..\Source\OverdriveProcessor.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\Source\ChaosProcessor.cpp">
-      <Filter>GuitarTX\Source</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\Source\SubProcessor.cpp">
-      <Filter>GuitarTX\Source</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\Source\PresetManager.cpp">
-      <Filter>GuitarTX\Source</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\Source\PresetBar.cpp">
-      <Filter>GuitarTX\Source</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\Source\DistortionProcessor.cpp">
+    <ClCompile Include="..\..\Source\CabinetProcessor.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
     <ClCompile Include="..\..\Source\EffectBase.cpp">
@@ -895,16 +883,28 @@
     <ClCompile Include="..\..\Source\RackComponent.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\Source\GainProcessor.cpp">
+    <ClCompile Include="..\..\Source\DistortionProcessor.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\Source\NoiseGateProcessor.cpp">
+    <ClCompile Include="..\..\Source\PresetManager.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\Source\OverdriveProcessor.cpp">
+    <ClCompile Include="..\..\Source\PresetBar.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\Source\CabinetProcessor.cpp">
+    <ClCompile Include="..\..\Source\SubProcessor.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\ChaosProcessor.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\MasterProcessor.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\SpectrumTools.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\ToneMatchProcessor.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
     <ClCompile Include="C:\Program Files\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.cpp">
@@ -4164,51 +4164,6 @@
     <ClInclude Include="..\..\Source\AudioEngine.h">
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\Source\MasterProcessor.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\SpectrumTools.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\ToneMatchProcessor.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\ChaosProcessor.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\SubProcessor.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\GuitarTXLookAndFeel.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\PresetManager.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\PresetBar.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\Biquad.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\DistortionProcessor.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\ProcessorBase.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\FadeProcessor.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\EffectRegistry.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\EffectPanel.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\Source\RackComponent.h">
-      <Filter>GuitarTX\Source</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\Source\GainProcessor.h">
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
@@ -4234,6 +4189,51 @@
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
     <ClInclude Include="..\..\Source\AudioSettingsWindow.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\ProcessorBase.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\FadeProcessor.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\EffectRegistry.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\EffectPanel.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\RackComponent.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\Biquad.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\DistortionProcessor.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\PresetManager.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\PresetBar.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\GuitarTXLookAndFeel.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\SubProcessor.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\ChaosProcessor.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\MasterProcessor.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\SpectrumTools.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\ToneMatchProcessor.h">
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
     <ClInclude Include="C:\Program Files\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.h">
