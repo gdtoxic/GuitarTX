@@ -1,0 +1,30 @@
+name: Bug report
+description: Something does not work or sounds wrong
+labels: [ bug ]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: GuitarTX version
+      placeholder: v0.1.2
+    validations:
+      required: true
+  - type: input
+    id: audio
+    attributes:
+      label: Audio interface and driver
+      description: Shown in the status line at the bottom of the window
+      placeholder: "ASIO: Focusrite USB ASIO | 48000 Hz | 128 samples"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Steps to reproduce, what you expected, what you got
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Contents of %APPDATA%\GuitarTX\GuitarTX.log (if relevant)
+      render: text

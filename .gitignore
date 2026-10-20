@@ -11,6 +11,8 @@ Builds/**/Debug/
 Builds/**/Release/
 
 # Сборочные артефакты
+build/
+dist/
 *.obj
 *.pdb
 *.ilk

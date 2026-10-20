@@ -1,5 +1,7 @@
 # GuitarTX
 
+[![Build](https://github.com/gdtoxic/GuitarTX/actions/workflows/build.yml/badge.svg)](https://github.com/gdtoxic/GuitarTX/actions/workflows/build.yml)
+
 Standalone гитарный процессор на **JUCE** (Windows). Цель — тяжёлый современный звук в духе Doom / Mick Gordon: плотный дисторшн, саб-808, хаос-шумы.
 
 ## Возможности
@@ -19,13 +21,29 @@ Standalone гитарный процессор на **JUCE** (Windows). Цель
 | Chaos | Fuzz / ring mod / bitcrush / downsample / жёсткий гейт |
 
 - **Master** — компрессор + lookahead-лимитер на выходе.
-- **Пресеты** цепочек и настроек: заводские + пользовательские (`%APPDATA%\GuitarTX\Presets\*.gtxpreset`).
+- **Tuner** — кнопка TUNER (Esc — закрыть): нота, стрелка в центах, частота. Точность < 1 цента от drop-A (27.5 Гц), глушит выход на время настройки, эталон A4 = 430…450 Гц.
+- **Пресеты** цепочек и настроек: 18 заводских (Doom, djent, sludge, drone, clean, 808-гибриды, шаблон под Tone Match) + пользовательские (`%APPDATA%\GuitarTX\Presets\*.gtxpreset`).
 - Регуляторы Input / Output, индикаторы уровня, автосохранение сессии.
 
 ## Сборка
 
+Готовый exe для каждого коммита собирает GitHub Actions (вкладка **Actions** → последний запуск → артефакт `GuitarTX-…-win64`). Релиз: тег `vX.Y.Z` → черновик релиза с zip и SHA-256.
+
+### CMake (проще всего)
+
+Нужны **Visual Studio** (2022 или новее, компоненты C++) и **CMake 3.22+**. JUCE скачается сам (версия закреплена в `CMakeLists.txt`):
+
+```
+cmake -B build -A x64
+cmake --build build --config Release
+```
+
+Готовый файл: `build/GuitarTX_artefacts/Release/GuitarTX.exe`. Свой JUCE вместо загрузки: `-DGUITARTX_JUCE_DIR="C:/Program Files/JUCE"`.
+
+### Projucer
+
 Требуется:
-- **JUCE** свежей версии (проект использует модуль `juce_audio_processors_headless`); модули ожидаются в `C:/Program Files/JUCE/modules`, иначе поменяй путь в Projucer
+- **JUCE 9.0.2+** (проект использует модуль `juce_audio_processors_headless`); модули ожидаются в `C:/Program Files/JUCE/modules`, иначе поменяй путь в Projucer
 - **Visual Studio 2026** (C++17)
 
 Шаги:
@@ -40,6 +58,10 @@ Source/            исходники (движок, эффекты, UI)
 JuceLibraryCode/   сгенерировано Projucer
 Builds/            проект Visual Studio 2026
 GuitarTX.jucer     проект Projucer
+CMakeLists.txt     CMake-сборка (CI и локально)
+packaging/         файлы для zip-релиза
+.github/           GitHub Actions, шаблоны issues
+CHANGELOG.md       история изменений
 ```
 
 ## Лицензия

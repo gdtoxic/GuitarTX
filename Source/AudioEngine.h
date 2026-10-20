@@ -6,15 +6,17 @@
 #include "MasterProcessor.h"
 #include "GainProcessor.h"
 #include "MeterProcessor.h"
+#include "TunerProcessor.h"
 
 // Аудиодвижок: устройство + граф обработки.
 //
 // Граф:
 //                                 +-> [основная цепочка] ---------+
-//   Input -> MeterIn -> InputGain +                                +-> Master -> OutputGain -> Fade -> MeterOut -> Output
+//   Input -> MeterIn -> Tuner -> InputGain +                       +-> Master -> OutputGain -> Fade -> MeterOut -> Output
 //                                 +-> [параллельный эффект 1] ----+
 //                                 +-> [параллельный эффект 2] ----+
 //
+// Tuner - анализ высоты для тюнера и mute всего, что после него.
 // Основная цепочка - эффекты последовательно. Параллельная ветка - каждый эффект
 // отдельно получает чистый сигнал, и его выход подмешивается к основному.
 //
@@ -70,6 +72,9 @@ public:
     // Мастер-секция (компрессор + лимитер). Её состояние входит в пресет
     MasterProcessor& getMaster() noexcept { return *master; }
 
+    // Тюнер: анализ входа и mute выхода
+    TunerProcessor& getTuner() noexcept { return *tuner; }
+
     // Пики для индикаторов (линейные значения), с max-hold и сбросом
     float getAndResetInputPeak();
     float getAndResetOutputPeak();
@@ -107,9 +112,10 @@ private:
     juce::String lastDeviceError;
 
     Node::Ptr audioInputNode, audioOutputNode;
-    Node::Ptr meterInNode, gainNode, masterNode, outputGainNode, fadeNode, meterOutNode;
+    Node::Ptr meterInNode, tunerNode, gainNode, masterNode, outputGainNode, fadeNode, meterOutNode;
 
     MeterProcessor* meterIn  = nullptr;
+    TunerProcessor* tuner    = nullptr;
     GainProcessor*  gain     = nullptr;
     GainProcessor*  outputGain = nullptr;
     MasterProcessor* master    = nullptr;

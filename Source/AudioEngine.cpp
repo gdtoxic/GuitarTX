@@ -92,6 +92,7 @@ void AudioEngine::createGraph()
         std::nullopt, UpdateKind::none);
 
     meterIn  = addFixedNode(std::make_unique<MeterProcessor>("MeterIn"),  meterInNode);
+    tuner    = addFixedNode(std::make_unique<TunerProcessor>(),           tunerNode);
     gain     = addFixedNode(std::make_unique<GainProcessor>(),            gainNode);
     master   = addFixedNode(std::make_unique<MasterProcessor>(),          masterNode);
     outputGain = addFixedNode(std::make_unique<GainProcessor>(),          outputGainNode);
@@ -108,9 +109,10 @@ void AudioEngine::rebuildConnections()
         graph.removeConnection(connection, UpdateKind::none);
 
     std::vector<Node::Ptr> chain;
-    chain.reserve(rack.size() + 4);
+    chain.reserve(rack.size() + 7);
 
     chain.push_back(meterInNode);
+    chain.push_back(tunerNode);
     chain.push_back(gainNode);
     chain.insert(chain.end(), rack.begin(), rack.end());
     chain.push_back(masterNode);

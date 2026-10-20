@@ -59,6 +59,8 @@ public:
 private:
     std::unique_ptr<juce::XmlElement> loadPresetXml(const Preset& preset) const;
     std::unique_ptr<juce::XmlElement> createFactoryXml(const juce::String& name) const;
+    std::unique_ptr<juce::XmlElement> createMasterParams(
+        const std::vector<std::pair<const char*, float>>& overrides) const;
     void applyFallbackImpulse(const juce::File& impulse);
     juce::File findCurrentImpulse() const;
     void setCurrent(const juce::String& name, bool isFactory);

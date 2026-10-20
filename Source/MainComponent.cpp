@@ -36,6 +36,14 @@ MainComponent::MainComponent()
     audioSettingsButton.onClick = [this] { showAudioSettings(); };
     addAndMakeVisible(audioSettingsButton);
 
+    // Тюнер: окно поверх педалборда, по умолчанию глушит выход
+    tunerButton.setTooltip("Tuner (Esc to close)");
+    tunerButton.setColour(juce::TextButton::buttonOnColourId, GuitarTXLookAndFeel::accent.darker(0.3f));
+    tunerButton.onClick = [this] { setTunerVisible(! tuner.isActive()); };
+    addAndMakeVisible(tunerButton);
+
+    tuner.onCloseRequested = [this] { setTunerVisible(false); };
+
     hintLabel.setText("drag to reorder  |  right-click to remove  |  + to add",
                       juce::dontSendNotification);
     hintLabel.setJustificationType(juce::Justification::centredRight);
@@ -96,6 +104,9 @@ MainComponent::MainComponent()
     }
 
     refreshRacks();
+
+    // Последним - чтобы лежал поверх педалборда
+    addChildComponent(tuner);
 
     lastSavedRack    = audioEngine.createRackState();
     lastSavedSession = createSessionState();
@@ -167,6 +178,9 @@ void MainComponent::restoreSession(const juce::XmlElement* oldRackState)
 
     audioEngine.setInputGainDb ((float) session->getDoubleAttribute("inputGainDb",  0.0));
     audioEngine.setOutputGainDb((float) session->getDoubleAttribute("outputGainDb", 0.0));
+
+    tuner.setReferenceA4((float) session->getDoubleAttribute("tunerA4", 440.0));
+    tuner.setMuteEnabled(session->getBoolAttribute("tunerMute", true));
 
     const auto presetName = session->getStringAttribute("presetName");
 
@@ -243,6 +257,10 @@ void MainComponent::showPanelFor(EffectBase* effect)
     {
         panel = createEffectPanel(*effect);
         addAndMakeVisible(*panel);
+
+        // Новая панель не должна оказаться поверх открытого тюнера
+        if (tuner.isVisible())
+            tuner.toFront(false);
     }
 
     updateMasterButton();
@@ -272,6 +290,21 @@ void MainComponent::updateMasterButton()
 
     if (masterButton.getButtonText() != text)
         masterButton.setButtonText(text);
+}
+
+void MainComponent::setTunerVisible(bool shouldShow)
+{
+    tuner.setActive(shouldShow);
+    tuner.setVisible(shouldShow);
+    tunerButton.setToggleState(shouldShow, juce::dontSendNotification);
+
+    if (shouldShow)
+    {
+        tuner.toFront(false);
+        tuner.grabKeyboardFocus();
+    }
+
+    saveStateIfChanged();
 }
 
 void MainComponent::onPresetLoaded()
@@ -331,6 +364,8 @@ std::unique_ptr<juce::XmlElement> MainComponent::createSessionState() const
 
     xml->setAttribute("inputGainDb",  (double) audioEngine.getInputGainDb());
     xml->setAttribute("outputGainDb", (double) audioEngine.getOutputGainDb());
+    xml->setAttribute("tunerA4",      (double) tuner.getReferenceA4());
+    xml->setAttribute("tunerMute",    tuner.isMuteEnabled());
 
     if (presetManager.hasCurrentPreset())
     {
@@ -481,7 +516,12 @@ void MainComponent::resized()
     // Заголовок и кнопка настроек
     auto header = area.removeFromTop(44);
     audioSettingsButton.setBounds(header.removeFromRight(130).reduced(0, 8));
+    header.removeFromRight(8);
+    tunerButton.setBounds(header.removeFromRight(90).reduced(0, 8));
     titleLabel.setBounds(header);
+
+    // Тюнер закрывает всё ниже заголовка
+    tuner.setBounds(area);
 
     presetBar.setBounds(area.removeFromTop(28));
     area.removeFromTop(8);

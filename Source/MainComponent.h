@@ -10,6 +10,7 @@
 #include "PresetBar.h"
 #include "PresetManager.h"
 #include "RackComponent.h"
+#include "TunerComponent.h"
 
 //==============================================================================
 class MainComponent : public juce::Component,
@@ -41,6 +42,7 @@ private:
     void refreshRacks();
     void showMaster();
     void updateMasterButton();
+    void setTunerVisible(bool shouldShow);
 
     void setupKnob(juce::Slider& knob, juce::Label& label, const juce::String& name);
 
@@ -62,6 +64,7 @@ private:
     juce::Label hintLabel;
     juce::Label mainLaneLabel, parallelLaneLabel;
     juce::TextButton audioSettingsButton { "Audio Settings" };
+    juce::TextButton tunerButton { "TUNER" };
     juce::Label statusLabel;
 
     // Входной/выходной gain и индикаторы
@@ -77,6 +80,9 @@ private:
     RackComponent mainRack     { audioEngine, AudioEngine::Lane::main };
     RackComponent parallelRack { audioEngine, AudioEngine::Lane::parallel };
     std::unique_ptr<EffectPanel> panel;
+
+    // Поверх всего остального (добавляется последним)
+    TunerComponent tuner { audioEngine.getTuner() };
 
     std::unique_ptr<juce::XmlElement> lastSavedRack, lastSavedSession;
     int saveTicks = 0;

@@ -1,0 +1,16 @@
+name: Feature request
+description: An idea for a new effect, preset or feature
+labels: [ enhancement ]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: What should GuitarTX do, and in which situation would you use it?
+    validations:
+      required: true
+  - type: textarea
+    id: reference
+    attributes:
+      label: Reference
+      description: Songs, gear or plugins that show the sound or behaviour you mean

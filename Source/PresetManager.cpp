@@ -5,6 +5,7 @@
 #include "OverdriveProcessor.h"
 #include "SubProcessor.h"
 #include "ChaosProcessor.h"
+#include "ToneMatchProcessor.h"
 
 namespace
 {
@@ -15,10 +16,13 @@ namespace
         bool parallel = false;                                    // параллельная ветка
     };
 
+    using ParameterList = std::vector<std::pair<const char*, float>>;
+
     struct FactoryPreset
     {
         const char* name;
         std::vector<EffectSpec> chain;
+        ParameterList master {};   // пусто = мастер по умолчанию
     };
 
     // Встроенные пресеты под Doom / modern metal.
@@ -82,6 +86,132 @@ namespace
 
             { "Clean (Cab Only)",
               { { CabinetProcessor::typeId,    {} } } },
+
+            // --- v0.1.2 -----------------------------------------------------------
+
+            // Октавный делитель под гитарой: вес "BFG"-риффов
+            { "Doom Divider",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -54.0f }, { "hold", 35.0f }, { "release", 55.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 2.0f }, { "tone", 75.0f }, { "level", 1.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 46.0f }, { "tight", 180.0f }, { "bass", 3.0f },
+                                                 { "mid", -7.0f }, { "treble", 3.0f }, { "presence", 4.0f },
+                                                 { "level", -16.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { SubProcessor::typeId,        { { "mode", 2.0f }, { "octave", -1.0f }, { "level", -13.0f },
+                                                 { "drive", 70.0f }, { "tone", 140.0f }, { "punch", 0.0f },
+                                                 { "decay", 200.0f }, { "threshold", -50.0f }, { "glide", 0.0f } }, true } },
+              { { "threshold", -16.0f }, { "ratio", 3.0f }, { "attack", 15.0f }, { "release", 120.0f },
+                { "makeup", 3.0f } } },
+
+            // Лид + металлический ring-скрим поверх
+            { "Doom Lead Scream",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -62.0f }, { "hold", 60.0f }, { "release", 180.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 6.0f }, { "tone", 65.0f }, { "level", 0.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 48.0f }, { "tight", 110.0f }, { "bass", 0.0f },
+                                                 { "mid", 3.0f }, { "treble", 3.0f }, { "presence", 2.0f },
+                                                 { "level", -14.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { ChaosProcessor::typeId,      { { "fuzz", 30.0f }, { "bits", 10.0f }, { "rate", 2.0f },
+                                                 { "ring", 880.0f }, { "ringMix", 60.0f }, { "gate", -46.0f },
+                                                 { "level", -26.0f } }, true } } },
+
+            // Современный djent: очень тугой низ, буст, плотная компрессия
+            { "Djent Tight",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -42.0f }, { "attack", 0.5f }, { "hold", 10.0f },
+                                                 { "release", 20.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 0.0f }, { "tone", 90.0f }, { "level", 6.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 34.0f }, { "tight", 260.0f }, { "bass", 1.0f },
+                                                 { "mid", 2.0f }, { "treble", 4.0f }, { "presence", 5.0f },
+                                                 { "level", -12.0f } } },
+                { CabinetProcessor::typeId,    {} } },
+              { { "threshold", -20.0f }, { "ratio", 5.0f }, { "attack", 3.0f }, { "release", 60.0f },
+                { "makeup", 5.0f } } },
+
+            // Рыхлый, жирный фузз-слидж: мало tight, много низа, заваленный верх
+            { "Sludge Fuzz",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -66.0f }, { "hold", 80.0f }, { "release", 250.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 28.0f }, { "tone", 35.0f }, { "level", -10.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 32.0f }, { "tight", 60.0f }, { "bass", 6.0f },
+                                                 { "mid", 3.0f }, { "treble", -3.0f }, { "presence", -2.0f },
+                                                 { "level", -14.0f } } },
+                { CabinetProcessor::typeId,    {} } } },
+
+            // Стена дрона: без гейта, длинный саб на 2 октавы ниже
+            { "Drone Wall",
+              { { DistortionProcessor::typeId, { { "gain", 52.0f }, { "tight", 50.0f }, { "bass", 6.0f },
+                                                 { "mid", 0.0f }, { "treble", -4.0f }, { "presence", -4.0f },
+                                                 { "level", -18.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { SubProcessor::typeId,        { { "mode", 0.0f }, { "octave", -2.0f }, { "level", -14.0f },
+                                                 { "drive", 20.0f }, { "tone", 80.0f }, { "punch", 0.0f },
+                                                 { "decay", 1500.0f }, { "threshold", -60.0f }, { "glide", 120.0f } }, true } },
+              { { "threshold", -24.0f }, { "ratio", 2.5f }, { "attack", 30.0f }, { "release", 400.0f },
+                { "makeup", 4.0f } } },
+
+            // Чистый звук с мягкой компрессией (основа под будущие delay/reverb)
+            { "Clean Compressed",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -72.0f }, { "release", 200.0f } } },
+                { CabinetProcessor::typeId,    {} } },
+              { { "threshold", -26.0f }, { "ratio", 3.0f }, { "attack", 8.0f }, { "release", 180.0f },
+                { "makeup", 7.0f } } },
+
+            // Trap-metal гибрид: гитара тоньше, низ отдан 808 с длинным хвостом и "ударом"
+            { "808 Hybrid",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -50.0f }, { "hold", 25.0f }, { "release", 40.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 38.0f }, { "tight", 220.0f }, { "bass", -3.0f },
+                                                 { "mid", -3.0f }, { "treble", 3.0f }, { "presence", 3.0f },
+                                                 { "level", -14.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { SubProcessor::typeId,        { { "mode", 0.0f }, { "octave", -1.0f }, { "level", -6.0f },
+                                                 { "drive", 35.0f }, { "tone", 120.0f }, { "punch", 7.0f },
+                                                 { "decay", 700.0f }, { "threshold", -50.0f }, { "glide", 25.0f } }, true } },
+              { { "threshold", -18.0f }, { "ratio", 4.0f }, { "attack", 20.0f }, { "release", 150.0f },
+                { "makeup", 3.0f } } },
+
+            // Грязный квадратный саб + фузз-хаос: шум и давление
+            { "808 Square Grind",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -50.0f }, { "hold", 30.0f }, { "release", 45.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 42.0f }, { "tight", 170.0f }, { "bass", 1.0f },
+                                                 { "mid", -5.0f }, { "treble", 2.0f }, { "presence", 3.0f },
+                                                 { "level", -15.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { SubProcessor::typeId,        { { "mode", 1.0f }, { "octave", -1.0f }, { "level", -12.0f },
+                                                 { "drive", 85.0f }, { "tone", 160.0f }, { "punch", 5.0f },
+                                                 { "decay", 350.0f }, { "threshold", -48.0f } }, true },
+                { ChaosProcessor::typeId,      { { "fuzz", 50.0f }, { "bits", 5.0f }, { "rate", 4.0f },
+                                                 { "ring", 110.0f }, { "ringMix", 25.0f }, { "gate", -36.0f },
+                                                 { "level", -24.0f } }, true } } },
+
+            // Индастриал: lo-fi крошка прямо в основной цепочке
+            { "Industrial Crush",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -48.0f }, { "hold", 20.0f }, { "release", 30.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 40.0f }, { "tight", 150.0f }, { "bass", 2.0f },
+                                                 { "mid", -4.0f }, { "treble", 1.0f }, { "presence", 2.0f },
+                                                 { "level", -12.0f } } },
+                { ChaosProcessor::typeId,      { { "fuzz", 12.0f }, { "bits", 6.0f }, { "rate", 6.0f },
+                                                 { "ring", 220.0f }, { "ringMix", 0.0f }, { "gate", -50.0f },
+                                                 { "level", -10.0f } } },
+                { CabinetProcessor::typeId,    {} } } },
+
+            // Заготовка под Tone Match: Load reference -> Learn my tone
+            { "Tone Match Template",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -55.0f }, { "hold", 40.0f }, { "release", 60.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 3.0f }, { "tone", 70.0f }, { "level", 0.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 40.0f }, { "tight", 140.0f }, { "bass", 3.0f },
+                                                 { "mid", -4.0f }, { "treble", 2.0f }, { "presence", 2.0f },
+                                                 { "level", -14.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { ToneMatchProcessor::typeId,  { { "amount", 100.0f }, { "smoothing", 1.0f }, { "level", 0.0f } } } } },
+
+            // Все педали сразу; лишние выключены - удобная стартовая точка
+            { "Full Rig",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -55.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 3.0f }, { "tone", 70.0f }, { "level", 0.0f } } },
+                { DistortionProcessor::typeId, {} },
+                { CabinetProcessor::typeId,    {} },
+                { ToneMatchProcessor::typeId,  { { EffectBase::enabledParameterId, 0.0f } } },
+                { SubProcessor::typeId,        { { EffectBase::enabledParameterId, 0.0f } }, true },
+                { ChaosProcessor::typeId,      { { EffectBase::enabledParameterId, 0.0f } }, true } } },
         };
 
         return presets;
@@ -164,10 +294,42 @@ std::unique_ptr<juce::XmlElement> PresetManager::createFactoryXml(const juce::St
             }
         }
 
+        if (! factory.master.empty())
+            xml->createNewChildElement("Master")->addChildElement(createMasterParams(factory.master).release());
+
         return xml;
     }
 
     return nullptr;
+}
+
+// Полный набор параметров мастера: значения по умолчанию + переопределения пресета.
+// Мастер не пересоздаётся при смене пресета, поэтому неуказанные параметры
+// нельзя оставлять как есть - иначе они "протекут" из предыдущего пресета.
+std::unique_ptr<juce::XmlElement> PresetManager::createMasterParams(
+    const std::vector<std::pair<const char*, float>>& overrides) const
+{
+    auto params = std::make_unique<juce::XmlElement>("PARAMS");
+
+    for (auto* parameter : engine.getMaster().getParameters())
+    {
+        auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+
+        if (ranged == nullptr)
+            continue;
+
+        float value = ranged->convertFrom0to1(ranged->getDefaultValue());
+
+        for (const auto& [id, overrideValue] : overrides)
+            if (ranged->getParameterID() == id)
+                value = overrideValue;
+
+        auto* param = params->createNewChildElement("PARAM");
+        param->setAttribute("id", ranged->getParameterID());
+        param->setAttribute("value", (double) value);
+    }
+
+    return params;
 }
 
 std::unique_ptr<juce::XmlElement> PresetManager::loadPresetXml(const Preset& preset) const
