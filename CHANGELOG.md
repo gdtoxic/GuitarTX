@@ -14,7 +14,7 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
   808 Hybrid, 808 Square Grind, Industrial Crush, Tone Match Template, Full Rig.
 - Factory presets can now set the Master compressor (Djent Tight, Drone Wall, Clean Compressed, ...).
 - CMake build (`CMakeLists.txt`) next to the Projucer project; JUCE is downloaded automatically.
-- GitHub Actions: Windows x64 build on every push, draft release with zip + SHA-256 on a `v*` tag.
+- GitHub Actions: Windows x64 build on every push; zip + SHA-256 are attached automatically to a published release.
 - `CHANGELOG.md`, issue templates (bug report / feature request).
 
 ## [0.1.1] - 2026-10-17

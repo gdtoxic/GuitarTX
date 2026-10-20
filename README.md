@@ -27,7 +27,7 @@ Standalone гитарный процессор на **JUCE** (Windows). Цель
 
 ## Сборка
 
-Готовый exe для каждого коммита собирает GitHub Actions (вкладка **Actions** → последний запуск → артефакт `GuitarTX-…-win64`). Релиз: тег `vX.Y.Z` → черновик релиза с zip и SHA-256.
+Готовый exe для каждого коммита собирает GitHub Actions (вкладка **Actions** → последний запуск → артефакт `GuitarTX-…-win64`). Релиз: **Releases → Draft a new release** → тег `vX.Y.Z` → **Publish** — через ~5 минут CI прикрепит к релизу zip и SHA-256.
 
 ### CMake (проще всего)
 
