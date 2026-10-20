@@ -2,6 +2,18 @@
 
 All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
 
+## [0.2.0] - 2026-10-21
+
+### Added
+- **Pitch** effect — octaver / whammy / pitch-drop:
+  - Shift -24...+24 semitones, works with **chords** (power chords down to drop-A): delay-line shifter
+    with correlation-aligned splices; accuracy within ~3 cents, 8-28 ms delay of the shifted signal.
+  - Modes: **Static** (whammy Position 0-100 %), **Dive** (every hit dives from the original pitch to Shift
+    over Time — the signature pitch-drop), **Rise** (every hit scoops up from Shift to the original pitch).
+  - Sens (attack threshold), Mix (dry / shifted), Tone (low-pass on the shifted signal), Level.
+- 3 new factory presets (21 total): Octave Down Doom, Pitch Drop Hits, Whammy Octave Lead; Full Rig now includes Pitch.
+- Integration tests (`tests/`, CMake option `GUITARTX_BUILD_TESTS`), run in CI on every build.
+
 ## [0.1.2] - 2026-10-20
 
 ### Added
@@ -27,5 +39,6 @@ First public release.
 - Master compressor + lookahead limiter.
 - Factory and user presets (`%APPDATA%\GuitarTX\Presets`).
 
+[0.2.0]: https://github.com/gdtoxic/GuitarTX/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/gdtoxic/GuitarTX/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/gdtoxic/GuitarTX/releases/tag/v0.1.1

@@ -19,10 +19,11 @@ Standalone гитарный процессор на **JUCE** (Windows). Цель
 | Tone Match | Подгонка тембра под эталонную запись (минимально-фазовый EQ, без задержки) |
 | Sub 808 | Саб-бас по высоте гитары (YIN-трекинг, Sine / Square / Divider, Punch) |
 | Chaos | Fuzz / ring mod / bitcrush / downsample / жёсткий гейт |
+| Pitch | Октавер / whammy / pitch-drop: сдвиг ±24 полутона (и для аккордов), режимы Static / Dive / Rise |
 
 - **Master** — компрессор + lookahead-лимитер на выходе.
 - **Tuner** — кнопка TUNER (Esc — закрыть): нота, стрелка в центах, частота. Точность < 1 цента от drop-A (27.5 Гц), глушит выход на время настройки, эталон A4 = 430…450 Гц.
-- **Пресеты** цепочек и настроек: 18 заводских (Doom, djent, sludge, drone, clean, 808-гибриды, шаблон под Tone Match) + пользовательские (`%APPDATA%\GuitarTX\Presets\*.gtxpreset`).
+- **Пресеты** цепочек и настроек: 21 заводской (Doom, djent, sludge, drone, clean, 808-гибриды, октава/pitch-drop, шаблон под Tone Match) + пользовательские (`%APPDATA%\GuitarTX\Presets\*.gtxpreset`).
 - Регуляторы Input / Output, индикаторы уровня, автосохранение сессии.
 
 ## Сборка
@@ -38,7 +39,7 @@ cmake -B build -A x64
 cmake --build build --config Release
 ```
 
-Готовый файл: `build/GuitarTX_artefacts/Release/GuitarTX.exe`. Свой JUCE вместо загрузки: `-DGUITARTX_JUCE_DIR="C:/Program Files/JUCE"`.
+Готовый файл: `build/GuitarTX_artefacts/Release/GuitarTX.exe`. Тесты: `-DGUITARTX_BUILD_TESTS=ON`, затем `ctest --test-dir build -C Release`. Свой JUCE вместо загрузки: `-DGUITARTX_JUCE_DIR="C:/Program Files/JUCE"`.
 
 ### Projucer
 
@@ -59,6 +60,7 @@ JuceLibraryCode/   сгенерировано Projucer
 Builds/            проект Visual Studio 2026
 GuitarTX.jucer     проект Projucer
 CMakeLists.txt     CMake-сборка (CI и локально)
+tests/             интеграционные тесты (DSP, тюнер, пресеты)
 packaging/         файлы для zip-релиза
 .github/           GitHub Actions, шаблоны issues
 CHANGELOG.md       история изменений

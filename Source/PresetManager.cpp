@@ -6,6 +6,7 @@
 #include "SubProcessor.h"
 #include "ChaosProcessor.h"
 #include "ToneMatchProcessor.h"
+#include "PitchProcessor.h"
 
 namespace
 {
@@ -210,8 +211,41 @@ namespace
                 { DistortionProcessor::typeId, {} },
                 { CabinetProcessor::typeId,    {} },
                 { ToneMatchProcessor::typeId,  { { EffectBase::enabledParameterId, 0.0f } } },
+                { PitchProcessor::typeId,      { { EffectBase::enabledParameterId, 0.0f } } },
                 { SubProcessor::typeId,        { { EffectBase::enabledParameterId, 0.0f } }, true },
                 { ChaosProcessor::typeId,      { { EffectBase::enabledParameterId, 0.0f } }, true } } },
+
+            // --- v0.2.0 -----------------------------------------------------------
+
+            // Октава вниз в смеси ДО дисторшна: одна гитара звучит как гитара + бас
+            { "Octave Down Doom",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -55.0f }, { "hold", 40.0f }, { "release", 60.0f } } },
+                { PitchProcessor::typeId,      { { "shift", -12.0f }, { "mode", 0.0f }, { "mix", 45.0f },
+                                                 { "tone", 3500.0f }, { "level", 0.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 40.0f }, { "tight", 90.0f }, { "bass", 3.0f },
+                                                 { "mid", -5.0f }, { "treble", 2.0f }, { "presence", 3.0f },
+                                                 { "level", -15.0f } } },
+                { CabinetProcessor::typeId,    {} } } },
+
+            // Каждый удар "ныряет" на октаву вниз - фирменный pitch-drop
+            { "Pitch Drop Hits",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -52.0f }, { "hold", 30.0f }, { "release", 50.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 44.0f }, { "tight", 160.0f }, { "bass", 2.0f },
+                                                 { "mid", -6.0f }, { "treble", 3.0f }, { "presence", 3.0f },
+                                                 { "level", -15.0f } } },
+                { PitchProcessor::typeId,      { { "shift", -12.0f }, { "mode", 1.0f }, { "time", 350.0f },
+                                                 { "sens", -40.0f }, { "mix", 100.0f }, { "tone", 9000.0f } } },
+                { CabinetProcessor::typeId,    {} } } },
+
+            // Лид с октавой вверх: "визг" поверх ноты
+            { "Whammy Octave Lead",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -62.0f }, { "release", 150.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 46.0f }, { "tight", 110.0f }, { "bass", 0.0f },
+                                                 { "mid", 3.0f }, { "treble", 2.0f }, { "presence", 2.0f },
+                                                 { "level", -14.0f } } },
+                { PitchProcessor::typeId,      { { "shift", 12.0f }, { "mode", 0.0f }, { "mix", 40.0f },
+                                                 { "tone", 7000.0f }, { "level", 0.0f } } },
+                { CabinetProcessor::typeId,    {} } } },
         };
 
         return presets;

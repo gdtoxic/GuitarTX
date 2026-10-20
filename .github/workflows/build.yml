@@ -40,10 +40,13 @@ jobs:
           "name=$version" >> $env:GITHUB_OUTPUT
 
       - name: Configure
-        run: cmake -S . -B build -A x64
+        run: cmake -S . -B build -A x64 -DGUITARTX_BUILD_TESTS=ON
 
       - name: Build
         run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
 
       - name: Package
         id: package

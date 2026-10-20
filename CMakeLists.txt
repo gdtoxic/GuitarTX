@@ -8,7 +8,7 @@
 
 cmake_minimum_required(VERSION 3.22)
 
-project(GuitarTX VERSION 0.1.2 LANGUAGES C CXX)
+project(GuitarTX VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,7 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 set(GUITARTX_JUCE_TAG "9.0.2" CACHE STRING "Версия JUCE для автозагрузки")
 set(GUITARTX_JUCE_DIR "" CACHE PATH "Папка с локальным JUCE (пусто = скачать)")
+option(GUITARTX_BUILD_TESTS "Собрать интеграционные тесты (GuitarTXTests)" OFF)
 
 if(GUITARTX_JUCE_DIR)
     add_subdirectory("${GUITARTX_JUCE_DIR}" JUCE EXCLUDE_FROM_ALL)
@@ -78,3 +79,44 @@ target_link_libraries(GuitarTX
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+# Интеграционные тесты: DSP и пресеты без аудиоустройства и UI
+if(GUITARTX_BUILD_TESTS)
+    juce_add_console_app(GuitarTXTests
+        PRODUCT_NAME "GuitarTX"
+        VERSION      ${PROJECT_VERSION})
+
+    juce_generate_juce_header(GuitarTXTests)
+
+    # Всё, кроме окна приложения и UI-компонентов
+    set(GUITARTX_TEST_SOURCES ${GUITARTX_SOURCES})
+    list(FILTER GUITARTX_TEST_SOURCES EXCLUDE REGEX "(Main|MainComponent|TunerComponent|EffectPanel|RackComponent|PresetBar)\\.cpp$")
+
+    target_sources(GuitarTXTests PRIVATE
+        ${GUITARTX_TEST_SOURCES}
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/GuitarTXTests.cpp")
+
+    target_include_directories(GuitarTXTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source")
+
+    target_compile_definitions(GuitarTXTests PRIVATE
+        JUCE_ASIO=1
+        JUCE_ASIO_USE_EXTERNAL_SDK=0
+        JUCE_STRICT_REFCOUNTEDPOINTER=1
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0)
+
+    if(MSVC)
+        target_compile_options(GuitarTXTests PRIVATE /bigobj /utf-8)
+    endif()
+
+    target_link_libraries(GuitarTXTests
+        PRIVATE
+            juce::juce_audio_utils
+            juce::juce_audio_processors_headless
+            juce::juce_dsp
+        PUBLIC
+            juce::juce_recommended_config_flags)
+
+    enable_testing()
+    add_test(NAME GuitarTXTests COMMAND GuitarTXTests)
+endif()

@@ -6,6 +6,7 @@
 #include "SubProcessor.h"
 #include "ChaosProcessor.h"
 #include "ToneMatchProcessor.h"
+#include "PitchProcessor.h"
 
 namespace
 {
@@ -27,6 +28,7 @@ const std::vector<EffectDescriptor>& EffectRegistry::getAll()
         describe<DistortionProcessor>("Distortion (High Gain)"),
         describe<CabinetProcessor>  ("Cabinet (IR)"),
         describe<ToneMatchProcessor>("Tone Match"),
+        describe<PitchProcessor>    ("Pitch (octave / whammy / dive)"),
         describe<ChaosProcessor>    ("Chaos (fuzz / crush / ring)"),
         describe<SubProcessor>      ("Sub 808", true),
     };

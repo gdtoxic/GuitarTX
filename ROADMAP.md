@@ -10,8 +10,8 @@
 
 ## v0.2 — звук
 - ✅ **Tuner** — тюнер с отключением звука (v0.1.2)
-- 🔜 **Pitch / Octaver / Whammy** — октава вниз, pitch-drop, «дайв» на педали — фирменные приёмы Mick Gordon
-- 📋 **Delay + Reverb** — для лидов и эмбиента (tape/digital delay, plate/hall, ducking)
+- ✅ **Pitch / Octaver / Whammy** — октава вниз, pitch-drop на каждый удар, whammy-позиция (v0.2.0)
+- 🔜 **Delay + Reverb** — для лидов и эмбиента (tape/digital delay, plate/hall, ducking)
 - 📋 Параметрический EQ (пост-кабинет)
 - 💡 Glitch / Stutter / Freeze — для «шумовых» вставок
 
