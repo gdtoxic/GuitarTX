@@ -20,10 +20,12 @@ Standalone гитарный процессор на **JUCE** (Windows). Цель
 | Sub 808 | Саб-бас по высоте гитары (YIN-трекинг, Sine / Square / Divider, Punch) |
 | Chaos | Fuzz / ring mod / bitcrush / downsample / жёсткий гейт |
 | Pitch | Октавер / whammy / pitch-drop: сдвиг ±24 полутона (и для аккордов), режимы Static / Dive / Rise |
+| Delay | Digital / Tape / Ping-Pong, до 2 с, tone и low cut в петле, модуляция, duck |
+| Reverb | Room / Plate / Hall (FDN), decay 0.2–20 с, pre-delay, damping, low cut, duck |
 
 - **Master** — компрессор + lookahead-лимитер на выходе.
 - **Tuner** — кнопка TUNER (Esc — закрыть): нота, стрелка в центах, частота. Точность < 1 цента от drop-A (27.5 Гц), глушит выход на время настройки, эталон A4 = 430…450 Гц.
-- **Пресеты** цепочек и настроек: 21 заводской (Doom, djent, sludge, drone, clean, 808-гибриды, октава/pitch-drop, шаблон под Tone Match) + пользовательские (`%APPDATA%\GuitarTX\Presets\*.gtxpreset`).
+- **Пресеты** цепочек и настроек: 48 заводских в 8 категориях (Doom, Metal, Nu-Metal, Industrial, Extreme, Alt Rock, Clean & Crunch, Utility) + пользовательские (`%APPDATA%\GuitarTX\Presets\*.gtxpreset`).
 - Регуляторы Input / Output, индикаторы уровня, автосохранение сессии.
 
 ## Сборка

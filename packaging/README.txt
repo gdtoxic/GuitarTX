@@ -2,7 +2,7 @@ GuitarTX {{VERSION}} (Windows x64)
 ==============================
 
 Standalone guitar processor in the Doom / Mick Gordon spirit:
-Noise Gate, Overdrive, Distortion, Cabinet (IR), Tone Match, Sub 808, Chaos, Pitch,
+Noise Gate, Overdrive, Distortion, Cabinet (IR), Tone Match, Sub 808, Chaos, Pitch, Delay, Reverb,
 Master compressor + limiter, Tuner, reorderable chain, parallel lane, presets.
 
 Run: GuitarTX.exe (no installer needed).

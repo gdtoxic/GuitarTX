@@ -2,6 +2,25 @@
 
 All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
 
+## [0.2.1] - 2026-10-21
+
+### Added
+- **Delay** — Digital / **Tape** (darker repeats, saturation, wow & flutter) / **Ping-Pong** (repeats alternate left-right).
+  Time up to 2 s (glides like tape when changed), Feedback up to 95 %, Tone and Low Cut inside the loop,
+  Mod, Mix, and **Duck** — repeats get quieter while you play and bloom in the gaps.
+- **Reverb** — 8-line feedback delay network: **Room / Plate / Hall**, Decay (RT60 0.2-20 s), Pre-delay,
+  Size, Damping, Low Cut, Mod (no metallic ringing), Mix, Duck. Fully decorrelated stereo tail.
+- **27 new factory presets (48 total)** for alternative rock, nu-metal, industrial, extreme and metal —
+  e.g. Thrash Rhythm, Metalcore Breakdown, Drop Chug, Virtual Drop -5, Whammy Squeal, Machine Rhythm,
+  Robot Ring, Black Metal Tremolo, Swedish Buzzsaw, Grind Gate, Blackgaze, Funeral Doom, Grunge Wall,
+  Shoegaze Wash, Clean Arpeggio, Dotted Eighth.
+- Factory presets are grouped into categories in the preset menu
+  (Doom, Metal, Nu-Metal, Industrial, Extreme, Alt Rock, Clean & Crunch, Utility).
+
+### Changed
+- Levels of factory presets balanced against each other; clean presets louder (Cabinet level, needs an IR loaded).
+- Full Rig includes Delay and Reverb (off).
+
 ## [0.2.0] - 2026-10-21
 
 ### Added
@@ -39,6 +58,7 @@ First public release.
 - Master compressor + lookahead limiter.
 - Factory and user presets (`%APPDATA%\GuitarTX\Presets`).
 
+[0.2.1]: https://github.com/gdtoxic/GuitarTX/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/gdtoxic/GuitarTX/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/gdtoxic/GuitarTX/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/gdtoxic/GuitarTX/releases/tag/v0.1.1

@@ -64,7 +64,10 @@ void PresetBar::showPresetMenu()
 {
     const auto presets = manager.getPresets();
 
-    juce::PopupMenu factoryMenu, userMenu;
+    // Factory - подменю по категориям (в порядке появления), user - плоским списком
+    std::vector<std::pair<juce::String, juce::PopupMenu>> categories;
+    juce::PopupMenu userMenu;
+    juce::String currentCategory;
 
     for (size_t i = 0; i < presets.size(); ++i)
     {
@@ -72,9 +75,30 @@ void PresetBar::showPresetMenu()
         const bool  current = preset.name == manager.getCurrentName()
                            && preset.isFactory == manager.isCurrentFactory();
 
-        (preset.isFactory ? factoryMenu : userMenu)
-            .addItem((int) i + 1, preset.name, true, current);
+        if (! preset.isFactory)
+        {
+            userMenu.addItem((int) i + 1, preset.name, true, current);
+            continue;
+        }
+
+        const auto category = preset.category.isNotEmpty() ? preset.category : juce::String("Other");
+
+        auto it = std::find_if(categories.begin(), categories.end(),
+                               [&category](const auto& entry) { return entry.first == category; });
+
+        if (it == categories.end())
+            it = categories.insert(categories.end(), { category, juce::PopupMenu() });
+
+        it->second.addItem((int) i + 1, preset.name, true, current);
+
+        if (current)
+            currentCategory = category;
     }
+
+    juce::PopupMenu factoryMenu;
+
+    for (auto& [category, submenu] : categories)
+        factoryMenu.addSubMenu(category, submenu, true, nullptr, category == currentCategory);
 
     juce::PopupMenu menu;
     menu.addSubMenu("Factory", factoryMenu);

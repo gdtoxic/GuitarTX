@@ -19,6 +19,7 @@ public:
         juce::String name;
         bool         isFactory = false;
         juce::File   file;            // только для user-пресетов
+        juce::String category;        // только для factory: подменю (Doom, Metal, ...)
     };
 
     static constexpr const char* fileExtension = ".gtxpreset";

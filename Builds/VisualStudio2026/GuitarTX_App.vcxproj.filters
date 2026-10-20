@@ -916,6 +916,12 @@
     <ClCompile Include="..\..\Source\PitchProcessor.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\Source\DelayProcessor.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\ReverbProcessor.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Program Files\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.cpp">
       <Filter>JUCE Modules\juce_audio_basics\audio_play_head</Filter>
     </ClCompile>
@@ -4258,6 +4264,12 @@
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
     <ClInclude Include="..\..\Source\PitchProcessor.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\DelayProcessor.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\ReverbProcessor.h">
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
     <ClInclude Include="C:\Program Files\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.h">

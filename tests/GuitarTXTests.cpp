@@ -1,5 +1,6 @@
 // Интеграционные тесты GuitarTX (без аудиоустройства и UI):
-//   Pitch (точность, Dive/Rise, bypass), узел тюнера (детекция, mute), загрузка всех заводских пресетов.
+//   Pitch (точность, Dive/Rise, bypass), Delay (тайминги, ping-pong, стабильность, duck),
+//   Reverb (RT60, стабильность, стерео), узел тюнера (детекция, mute), загрузка всех заводских пресетов.
 //
 //   cmake -B build -DGUITARTX_BUILD_TESTS=ON && cmake --build build --config Release
 //   build/GuitarTXTests_artefacts/Release/GuitarTXTests
@@ -9,6 +10,9 @@
 #include "PitchProcessor.h"
 #include "PitchDetector.h"
 #include "TunerProcessor.h"
+#include "DelayProcessor.h"
+#include "ReverbProcessor.h"
+#include "Biquad.h"
 #include <cstdio>
 
 static int failures = 0;
@@ -95,6 +99,235 @@ static void testPitch()
     }
 }
 
+
+// Прогоняет эффект по входу (стерео: in -> [L, R]) блоками
+template <typename Effect>
+static std::array<std::vector<float>, 2> run(Effect& effect, const std::vector<float>& input, int block = 256,
+                                             std::function<void(int)> beforeBlock = {})
+{
+    std::array<std::vector<float>, 2> out { std::vector<float>(input.size()), std::vector<float>(input.size()) };
+    juce::AudioBuffer<float> buf(2, block);
+    juce::MidiBuffer midi;
+
+    for (size_t start = 0; start < input.size(); start += (size_t) block)
+    {
+        const int n = (int) std::min((size_t) block, input.size() - start);
+        buf.setSize(2, n, false, false, true);
+
+        for (int k = 0; k < n; ++k)
+        {
+            buf.setSample(0, k, input[start + (size_t) k]);
+            buf.setSample(1, k, input[start + (size_t) k]);
+        }
+
+        if (beforeBlock)
+            beforeBlock((int) start);
+
+        effect.processBlock(buf, midi);
+
+        for (int k = 0; k < n; ++k)
+        {
+            out[0][start + (size_t) k] = buf.getSample(0, k);
+            out[1][start + (size_t) k] = buf.getSample(1, k);
+        }
+    }
+
+    return out;
+}
+
+static bool allFinite(const std::array<std::vector<float>, 2>& x, float limit, float* peak = nullptr)
+{
+    float maxAbs = 0.0f;
+    for (const auto& ch : x)
+        for (float v : ch)
+        {
+            if (! std::isfinite(v)) return false;
+            maxAbs = std::max(maxAbs, std::abs(v));
+        }
+    if (peak != nullptr) *peak = maxAbs;
+    return maxAbs < limit;
+}
+
+static void testDelay()
+{
+    const double sr = 48000;
+
+    // Digital: импульс -> повторы на 250 / 500 / 750 мс, каждый в 0.5 раза тише
+    {
+        DelayProcessor d; d.setPlayConfigDetails(2, 2, sr, 256);
+        setParam(d, "mode", 0); setParam(d, "time", 250); setParam(d, "feedback", 50); setParam(d, "mix", 100);
+        setParam(d, "tone", 16000); setParam(d, "lowcut", 20); setParam(d, "mod", 0); setParam(d, "duck", 0);
+        d.prepareToPlay(sr, 256);
+
+        std::vector<float> in((size_t) (sr * 1.0), 0.0f);
+        in[0] = 1.0f;
+        auto out = run(d, in);
+
+        float prev = 0.0f;
+        for (int k = 1; k <= 3; ++k)
+        {
+            const int expected = (int) std::lround(0.25 * sr * k);
+            // Позиция - по пику, уровень - по энергии в окне (Tone в петле "размазывает" импульс)
+            int best = expected; float maxAbs = 0.0f; double energy = 0.0;
+            for (int i = expected - 50; i <= expected + 50; ++i)
+            {
+                const float v = out[0][(size_t) i];
+                energy += (double) v * v;
+                if (std::abs(v) > maxAbs) { maxAbs = std::abs(v); best = i; }
+            }
+            const auto peak = (float) std::sqrt(energy);
+
+            std::printf("Delay digital echo %d: at %d (expected %d), level %.3f\n", k, best, expected, peak);
+            CHECK(std::abs(best - expected) <= 2, "echo %d at wrong time", k);
+            if (k > 1) CHECK(peak / prev > 0.4f && peak / prev < 0.6f, "echo %d feedback ratio %.2f", k, peak / prev);
+            prev = peak;
+        }
+    }
+
+    // Ping-Pong: 1-й повтор слева, 2-й справа
+    {
+        DelayProcessor d; d.setPlayConfigDetails(2, 2, sr, 256);
+        setParam(d, "mode", 2); setParam(d, "time", 200); setParam(d, "feedback", 60); setParam(d, "mix", 100);
+        setParam(d, "tone", 16000); setParam(d, "lowcut", 20);
+        d.prepareToPlay(sr, 256);
+
+        std::vector<float> in((size_t) (sr * 0.7), 0.0f);
+        in[0] = 1.0f;
+        auto out = run(d, in);
+
+        auto peakAround = [&](int ch, double t)
+        {
+            const int c = (int) std::lround(t * sr); float p = 0.0f;
+            for (int i = c - 50; i <= c + 50; ++i) p = std::max(p, std::abs(out[(size_t) ch][(size_t) i]));
+            return p;
+        };
+
+        std::printf("Delay ping-pong: 200ms L %.3f R %.3f | 400ms L %.3f R %.3f\n",
+                    peakAround(0, 0.2), peakAround(1, 0.2), peakAround(0, 0.4), peakAround(1, 0.4));
+        CHECK(peakAround(0, 0.2) > 0.3f && peakAround(1, 0.2) < 0.01f, "first ping should be left only");
+        CHECK(peakAround(1, 0.4) > 0.2f && peakAround(0, 0.4) < 0.01f, "second ping should be right only");
+    }
+
+    // Tape, feedback 95 %, mod 100 %: громкий шум 6 с - без разноса
+    {
+        DelayProcessor d; d.setPlayConfigDetails(2, 2, sr, 256);
+        setParam(d, "mode", 1); setParam(d, "time", 120); setParam(d, "feedback", 95); setParam(d, "mix", 100);
+        setParam(d, "mod", 100); setParam(d, "tone", 16000); setParam(d, "lowcut", 20);
+        d.prepareToPlay(sr, 256);
+
+        juce::Random rng(1);
+        std::vector<float> in((size_t) (sr * 6.0));
+        for (auto& v : in) v = rng.nextFloat() * 1.6f - 0.8f;
+
+        float peak = 0.0f;
+        const bool ok = allFinite(run(d, in), 8.0f, &peak);
+        std::printf("Delay tape fb 95%%: finite & bounded = %d (peak %.2f)\n", (int) ok, peak);
+        CHECK(ok, "tape delay unstable");
+    }
+
+    // Duck 20 дБ: пока звучит громкий тон, повторы тише
+    {
+        auto wetLevel = [&](float duck)
+        {
+            DelayProcessor d; d.setPlayConfigDetails(2, 2, sr, 256);
+            setParam(d, "time", 100); setParam(d, "feedback", 30); setParam(d, "mix", 100); setParam(d, "duck", duck);
+            d.prepareToPlay(sr, 256);
+
+            std::vector<float> in((size_t) sr);
+            for (size_t i = 0; i < in.size(); ++i) in[i] = 0.5f * tone((double) i / sr, 220.0);
+
+            auto out = run(d, in);
+            double e = 0.0;
+            for (size_t i = (size_t) (0.5 * sr); i < in.size(); ++i) { const double w = out[0][i] - in[i]; e += w * w; }
+            return 10.0 * std::log10(e + 1e-20);
+        };
+
+        const double drop = wetLevel(0.0f) - wetLevel(20.0f);
+        std::printf("Delay duck 20 dB: echoes %.1f dB quieter while playing\n", drop);
+        CHECK(drop > 15.0 && drop < 25.0, "duck depth %.1f dB", drop);
+    }
+}
+
+// RT60 по импульсному отклику (интеграл Шрёдера, наклон -5...-35 дБ)
+static double measureRt60(const std::vector<float>& ir, double sr)
+{
+    std::vector<double> energy(ir.size());
+    double sum = 0.0;
+    for (size_t i = ir.size(); i-- > 0;) { sum += (double) ir[i] * ir[i]; energy[i] = sum; }
+
+    const double total = energy[0];
+    double t5 = -1.0, t35 = -1.0;
+
+    for (size_t i = 0; i < energy.size(); ++i)
+    {
+        const double db = 10.0 * std::log10(energy[i] / total + 1e-30);
+        if (t5 < 0.0 && db <= -5.0)  t5  = (double) i / sr;
+        if (t35 < 0.0 && db <= -35.0) { t35 = (double) i / sr; break; }
+    }
+
+    return t35 > 0.0 ? (t35 - t5) * 2.0 : -1.0;   // T30 -> RT60
+}
+
+static void testReverb()
+{
+    const double sr = 48000;
+    const char* modes[] { "Room", "Plate", "Hall" };
+
+    for (int mode = 0; mode < 3; ++mode)
+        for (float decay : { 1.0f, 3.0f })
+        {
+            ReverbProcessor r; r.setPlayConfigDetails(2, 2, sr, 256);
+            setParam(r, "mode", (float) mode); setParam(r, "decay", decay); setParam(r, "mix", 100);
+            setParam(r, "predelay", 0); setParam(r, "damping", 16000); setParam(r, "lowcut", 20); setParam(r, "mod", 0);
+            r.prepareToPlay(sr, 256);
+
+            std::vector<float> in((size_t) (sr * (decay * 2.5 + 0.5)), 0.0f);
+            in[0] = 1.0f;
+            auto out = run(r, in);
+
+            std::vector<float> wet(out[0]);
+            wet[0] -= 1.0f;   // убираем сухой импульс
+
+            // RT60 принято мерить в средней полосе (500 Гц ... 2 кГц)
+            Biquad hp, lp; hp.setHighPass(sr, 500.0f); lp.setLowPass(sr, 2000.0f);
+            for (auto& v : wet) v = lp.processSample(0, hp.processSample(0, v));
+
+            const double rt = measureRt60(wet, sr);
+
+            std::printf("Reverb %-5s decay %.1f s: measured RT60 %.2f s\n", modes[mode], decay, rt);
+            CHECK(rt > decay * 0.7 && rt < decay * 1.3, "%s RT60 %.2f vs %.1f", modes[mode], rt, decay);
+        }
+
+    // Стабильность: decay 20 s, mod 100 %, шум 10 с, size меняется на ходу
+    {
+        ReverbProcessor r; r.setPlayConfigDetails(2, 2, sr, 256);
+        setParam(r, "mode", 2); setParam(r, "decay", 20); setParam(r, "mix", 100); setParam(r, "mod", 100);
+        setParam(r, "damping", 16000); setParam(r, "lowcut", 20);
+        r.prepareToPlay(sr, 256);
+
+        juce::Random rng(2);
+        std::vector<float> in((size_t) (sr * 10.0));
+        for (auto& v : in) v = rng.nextFloat() * 0.8f - 0.4f;
+
+        auto out = run(r, in, 256, [&](int start) { setParam(r, "size", (float) ((start / 48000) * 25 % 100)); });
+        float peak = 0.0f;
+        const bool ok = allFinite(out, 10.0f, &peak);
+        std::printf("Reverb decay 20 s, mod 100%%, size sweep: finite & bounded = %d (peak %.2f)\n", (int) ok, peak);
+        CHECK(ok, "reverb unstable");
+
+        // Стерео: корреляция L/R хвоста (без сухого)
+        double lr = 0, ll = 0, rr = 0;
+        for (size_t i = (size_t) (sr * 2); i < in.size(); ++i)
+        {
+            const double l = out[0][i] - in[i], rgt = out[1][i] - in[i];
+            lr += l * rgt; ll += l * l; rr += rgt * rgt;
+        }
+        const double correlation = lr / std::sqrt(ll * rr + 1e-30);
+        std::printf("Reverb stereo L/R correlation: %.2f\n", correlation);
+        CHECK(std::abs(correlation) < 0.5, "reverb too mono (%.2f)", correlation);
+    }
+}
+
 static void testTuner()
 {
     const double sr = 48000; const int block = 128;
@@ -135,13 +368,15 @@ static void testPresets()
     }
 
     std::printf("Presets: %d factory presets loaded\n", factory);
-    CHECK(factory >= 21, "expected at least 21 factory presets, got %d", factory);
+    CHECK(factory >= 48, "expected at least 48 factory presets, got %d", factory);
 }
 
 int main()
 {
     juce::ScopedJuceInitialiser_GUI init;
     testPitch();
+    testDelay();
+    testReverb();
     testTuner();
     testPresets();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);

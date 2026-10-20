@@ -11,8 +11,9 @@
 ## v0.2 — звук
 - ✅ **Tuner** — тюнер с отключением звука (v0.1.2)
 - ✅ **Pitch / Octaver / Whammy** — октава вниз, pitch-drop на каждый удар, whammy-позиция (v0.2.0)
-- 🔜 **Delay + Reverb** — для лидов и эмбиента (tape/digital delay, plate/hall, ducking)
-- 📋 Параметрический EQ (пост-кабинет)
+- ✅ **Delay + Reverb** — digital/tape/ping-pong, room/plate/hall, ducking (v0.2.1)
+- ✅ 48 заводских пресетов по стилям: alt rock, nu-metal, industrial, extreme, metal (v0.2.1)
+- 🔜 Параметрический EQ (пост-кабинет)
 - 💡 Glitch / Stutter / Freeze — для «шумовых» вставок
 
 ## v0.3 — рабочий процесс
