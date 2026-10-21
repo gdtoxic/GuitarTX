@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<JUCERPROJECT id="Wg1L62" name="GuitarTX" projectType="guiapp" useAppConfig="0" version="0.2.2"
+<JUCERPROJECT id="Wg1L62" name="GuitarTX" projectType="guiapp" useAppConfig="0" version="0.3.0"
               addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1">
   <MAINGROUP id="WBZhkT" name="GuitarTX">
     <GROUP id="{056E7338-7FB1-568E-9E02-5A011290C829}" name="Source">
@@ -73,6 +73,10 @@
       <FILE id="rvPrC1" name="ReverbProcessor.cpp" compile="1" resource="0" file="Source/ReverbProcessor.cpp"/>
       <FILE id="eqPrH1" name="EqProcessor.h" compile="0" resource="0" file="Source/EqProcessor.h"/>
       <FILE id="eqPrC1" name="EqProcessor.cpp" compile="1" resource="0" file="Source/EqProcessor.cpp"/>
+      <FILE id="midCtH" name="MidiController.h" compile="0" resource="0" file="Source/MidiController.h"/>
+      <FILE id="midCtC" name="MidiController.cpp" compile="1" resource="0" file="Source/MidiController.cpp"/>
+      <FILE id="midWnH" name="MidiWindow.h" compile="0" resource="0" file="Source/MidiWindow.h"/>
+      <FILE id="midWnC" name="MidiWindow.cpp" compile="1" resource="0" file="Source/MidiWindow.cpp"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>

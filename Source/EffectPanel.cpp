@@ -1,10 +1,29 @@
 #include "EffectPanel.h"
 
+namespace
+{
+    MidiLearnHost* midiLearnHost = nullptr;
+}
+
+void EffectPanel::setMidiLearnHost(MidiLearnHost* host) noexcept
+{
+    midiLearnHost = host;
+}
+
+// Правый клик по заголовку/фону панели - футсвитч вкл/выкл педали
+void EffectPanel::mouseDown(const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu() && midiLearnHost != nullptr)
+        midiLearnHost->showMidiMenu(effect, {}, titleLabel);
+}
+
 //==============================================================================
 EffectPanel::EffectPanel(EffectBase& effectToEdit)
     : effect(effectToEdit)
 {
     titleLabel.setText(effect.getName(), juce::dontSendNotification);
+    titleLabel.setTooltip("Right-click: MIDI footswitch for On/Off");
+    titleLabel.addMouseListener(this, false);
     titleLabel.setFont(juce::FontOptions(18.0f, juce::Font::bold));
     addAndMakeVisible(titleLabel);
 
@@ -26,9 +45,25 @@ EffectPanel::EffectPanel(EffectBase& effectToEdit)
         control->label.setJustificationType(juce::Justification::centred);
         addAndMakeVisible(control->label);
 
+        const auto parameterId = ranged->getParameterID();
+        auto* controlPtr = control.get();
+
+        auto openMenu = [this, parameterId, controlPtr]
+        {
+            if (midiLearnHost != nullptr)
+            {
+                juce::Component* target = controlPtr->toggle != nullptr ? static_cast<juce::Component*>(controlPtr->toggle.get())
+                                                                         : static_cast<juce::Component*>(&controlPtr->slider);
+                midiLearnHost->showMidiMenu(effect, parameterId, *target);
+            }
+        };
+
+        control->slider.onRightClick = openMenu;
+
         if (auto* boolParam = dynamic_cast<juce::AudioParameterBool*>(ranged))
         {
-            control->toggle = std::make_unique<juce::ToggleButton>("On");
+            control->toggle = std::make_unique<RightClickable<juce::ToggleButton>>("On");
+            control->toggle->onRightClick = openMenu;
             control->toggleAttachment = std::make_unique<juce::ButtonParameterAttachment>(
                 *boolParam, *control->toggle);
 

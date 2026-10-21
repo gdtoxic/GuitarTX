@@ -22,14 +22,16 @@ public:
 
     void updateDisplay();
 
+    // Загрузка с обновлением панели и колбэком onPresetLoaded (меню, кнопки, MIDI)
+    void loadPreset(const PresetManager::Preset& preset);
+    void step(int direction);
+
     void resized() override;
 
 private:
     void timerCallback() override;
 
     void showPresetMenu();
-    void loadPreset(const PresetManager::Preset& preset);
-    void step(int direction);
 
     void save();
     void saveAs();

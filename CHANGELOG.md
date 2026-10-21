@@ -2,6 +2,22 @@
 
 All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
 
+## [0.3.0] - 2026-10-21
+
+### Added
+- **MIDI control** — expression pedals, footswitches and preset changes from any MIDI controller.
+  - **MIDI Learn**: right-click any knob or switch -> *MIDI Learn*, then move a pedal / knob (CC).
+    Value 0-127 maps over the full parameter range. Mappings follow the effect type, not the preset:
+    an expression pedal on *Pitch: Position* works in every preset that has a Pitch.
+  - **Footswitch On/Off** for any pedal: right-click the pedal's title -> *MIDI Learn: On/Off*.
+    **Momentary** (each press toggles) or **Latching** (>= 64 on, < 64 off) per mapping.
+  - **Program Change N** selects preset N+1 in the preset list (factory first, then user).
+  - CC actions: **Next preset**, **Previous preset**, **Tuner on/off** (fire on press).
+  - **MIDI window** (MIDI button in the header): enabled inputs, last received message,
+    list of mappings (remove, switch mode, clear all), Learn buttons for actions.
+  - Mappings are saved with the session settings. All MIDI inputs are enabled on first run.
+- MIDI input selection in Audio Settings.
+
 ## [0.2.2] - 2026-10-21
 
 ### Added

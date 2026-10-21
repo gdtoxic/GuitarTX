@@ -1,7 +1,7 @@
 // Интеграционные тесты GuitarTX (без аудиоустройства и UI):
 //   Pitch (точность, Dive/Rise, bypass), Delay (тайминги, ping-pong, стабильность, duck),
 //   Reverb (RT60, стабильность, стерео), встроенный кабинет, EQ, хвосты при bypass,
-//   узел тюнера (детекция, mute), загрузка всех заводских пресетов.
+//   MIDI (learn, футсвитчи, program change, XML), узел тюнера (детекция, mute), загрузка всех заводских пресетов.
 //
 //   cmake -B build -DGUITARTX_BUILD_TESTS=ON && cmake --build build --config Release
 //   build/GuitarTXTests_artefacts/Release/GuitarTXTests
@@ -16,6 +16,7 @@
 #include "Biquad.h"
 #include "CabinetProcessor.h"
 #include "EqProcessor.h"
+#include "MidiController.h"
 #include <cstdio>
 
 static int failures = 0;
@@ -487,6 +488,112 @@ static void testSpillover()
     }
 }
 
+static void testMidi()
+{
+    AudioEngine engine;
+    PresetManager presets(engine);
+
+    for (const auto& p : presets.getPresets())
+        if (p.name == "Whammy Squeal")
+            presets.loadPreset(p);
+
+    MidiController midi(engine);
+    int programChange = -1, steps = 0, tunerToggles = 0;
+    midi.onProgramChange = [&](int n) { programChange = n; };
+    midi.onPresetStep    = [&](int d) { steps += d; };
+    midi.onToggleTuner   = [&] { ++tunerToggles; };
+
+    auto cc = [&](int channel, int controller, int value)
+    {
+        midi.postMessage(juce::MidiMessage::controllerEvent(channel, controller, value));
+        midi.processPending();
+    };
+
+    auto findEffect = [&](const char* type) -> EffectBase*
+    {
+        for (int i = 0; i < engine.getNumEffects(); ++i)
+            if (engine.getEffect(i)->getTypeId() == type)
+                return engine.getEffect(i);
+        return nullptr;
+    };
+
+    auto* pitch = findEffect("pitch");
+    auto* dist  = findEffect("distortion");
+    CHECK(pitch != nullptr && dist != nullptr, "test preset has no pitch / distortion");
+    if (pitch == nullptr || dist == nullptr) return;
+
+    auto value = [](EffectBase& e, const char* id)
+    {
+        auto* p = e.getValueTreeState().getParameter(id);
+        return p->convertFrom0to1(p->getValue());
+    };
+
+    // Педаль экспрессии -> Pitch: Position
+    midi.startLearn({ MidiController::Kind::parameter, "pitch", "position" });
+    cc(1, 11, 30);
+    CHECK(! midi.isLearning() && midi.getMappings().size() == 1, "learn did not create a mapping");
+    cc(1, 11, 127); const float top = value(*pitch, "position");
+    cc(1, 11, 0);   const float bottom = value(*pitch, "position");
+    cc(1, 11, 64);  const float middle = value(*pitch, "position");
+    std::printf("MIDI expression CC11 -> Pitch Position: 127 -> %.0f%%, 0 -> %.0f%%, 64 -> %.0f%%  (%s)\n",
+                top, bottom, middle, midi.describe(midi.getMappings()[0]).toRawUTF8());
+    CHECK(std::abs(top - 100.0f) < 0.5f && bottom < 0.5f && std::abs(middle - 50.0f) < 1.5f, "expression mapping");
+
+    // Канал: привязка выучена на канале 1 - канал 2 игнорируется
+    cc(2, 11, 127);
+    CHECK(value(*pitch, "position") < 55.0f, "channel filter");
+
+    // Футсвитч Momentary: нажатие (127) переключает, отпускание (0) - нет
+    midi.startLearn({ MidiController::Kind::footswitch, "distortion", {} });
+    cc(1, 80, 127);
+    const bool start = dist->isEffectEnabled();
+    cc(1, 80, 0);   const bool afterRelease = dist->isEffectEnabled();
+    cc(1, 80, 127); const bool afterPress   = dist->isEffectEnabled();
+    cc(1, 80, 0);
+    cc(1, 80, 127); const bool afterPress2  = dist->isEffectEnabled();
+    std::printf("MIDI footswitch momentary: %d -> release %d -> press %d -> press %d\n",
+                (int) start, (int) afterRelease, (int) afterPress, (int) afterPress2);
+    CHECK(afterRelease == start && afterPress != start && afterPress2 == start, "momentary footswitch");
+
+    // Latching: 127 = вкл, 0 = выкл
+    for (size_t i = 0; i < midi.getMappings().size(); ++i)
+        if (midi.getMappings()[i].kind == MidiController::Kind::footswitch)
+            midi.setSwitchMode(i, MidiController::SwitchMode::latching);
+    cc(1, 80, 0);   const bool latchOff = dist->isEffectEnabled();
+    cc(1, 80, 127); const bool latchOn  = dist->isEffectEnabled();
+    CHECK(! latchOff && latchOn, "latching footswitch");
+
+    // Next preset: только по фронту нажатия
+    midi.startLearn({ MidiController::Kind::nextPreset, {}, {} });
+    cc(1, 81, 127);              // learn
+    cc(1, 81, 0);
+    cc(1, 81, 127); cc(1, 81, 127);   // повтор без отпускания - один шаг
+    cc(1, 81, 0);
+    std::printf("MIDI next preset: steps = %d\n", steps);
+    CHECK(steps == 1, "preset step edge detection");
+
+    // Tuner
+    midi.startLearn({ MidiController::Kind::tuner, {}, {} });
+    cc(1, 82, 127); cc(1, 82, 0); cc(1, 82, 127);
+    CHECK(tunerToggles == 1, "tuner toggle");
+
+    // Program Change и ноты
+    midi.postMessage(juce::MidiMessage::programChange(1, 7));
+    midi.postMessage(juce::MidiMessage::noteOn(1, 60, 1.0f));
+    midi.processPending();
+    CHECK(programChange == 7, "program change");
+
+    // XML туда-обратно
+    const auto xml = midi.createXml();
+    MidiController restored(engine);
+    restored.restoreFromXml(*xml);
+    bool same = restored.getMappings().size() == midi.getMappings().size();
+    for (size_t i = 0; same && i < midi.getMappings().size(); ++i)
+        same = restored.describe(restored.getMappings()[i]) == midi.describe(midi.getMappings()[i]);
+    std::printf("MIDI mappings: %d, XML round trip %s\n", (int) midi.getMappings().size(), same ? "ok" : "MISMATCH");
+    CHECK(same && midi.getMappings().size() == 4, "xml round trip");
+}
+
 static void testTuner()
 {
     const double sr = 48000; const int block = 128;
@@ -539,6 +646,7 @@ int main()
     testCabinet();
     testEq();
     testSpillover();
+    testMidi();
     testTuner();
     testPresets();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);

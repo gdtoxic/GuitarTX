@@ -6,6 +6,14 @@
 #include "ToneMatchProcessor.h"
 #include "EqProcessor.h"
 
+// Куда панель отправляет правый клик по ручке (MIDI Learn).
+// parameterId пустой - вкл/выкл самой педали (футсвитч).
+struct MidiLearnHost
+{
+    virtual ~MidiLearnHost() = default;
+    virtual void showMidiMenu(EffectBase& effect, const juce::String& parameterId, juce::Component& target) = 0;
+};
+
 // Панель параметров выбранной педали.
 // Слайдеры строятся автоматически по параметрам эффекта (кроме "enabled",
 // он управляется кнопкой на плитке). Нестандартные элементы добавляют наследники.
@@ -17,6 +25,11 @@ public:
     ~EffectPanel() override = default;
 
     EffectBase& getEffect() noexcept { return effect; }
+
+    // Один хост на приложение (MainComponent); nullptr - без MIDI-меню
+    static void setMidiLearnHost(MidiLearnHost* host) noexcept;
+
+    void mouseDown(const juce::MouseEvent& e) override;
 
     // Высота, нужная панели при заданной ширине
     int getPreferredHeight(int width) const;
@@ -48,14 +61,36 @@ protected:
     int getNumControls() const noexcept { return (int) controls.size(); }
 
 private:
+    // Правый клик -> колбэк (MIDI Learn) вместо обычной реакции контрола
+    template <typename Base>
+    struct RightClickable : public Base
+    {
+        using Base::Base;
+        std::function<void()> onRightClick;
+
+        void mouseDown(const juce::MouseEvent& e) override
+        {
+            rightClick = e.mods.isPopupMenu() && onRightClick != nullptr;
+
+            if (rightClick) onRightClick();
+            else            Base::mouseDown(e);
+        }
+
+        void mouseDrag(const juce::MouseEvent& e) override { if (! rightClick) Base::mouseDrag(e); }
+        void mouseUp  (const juce::MouseEvent& e) override { if (! rightClick) Base::mouseUp(e); }
+
+    private:
+        bool rightClick = false;
+    };
+
     // Ручка для числовых параметров, переключатель - для bool
     struct ParameterControl
     {
         juce::Label  label;
-        juce::Slider slider;
+        RightClickable<juce::Slider> slider;
         std::unique_ptr<juce::SliderParameterAttachment> attachment;
 
-        std::unique_ptr<juce::ToggleButton> toggle;
+        std::unique_ptr<RightClickable<juce::ToggleButton>> toggle;
         std::unique_ptr<juce::ButtonParameterAttachment> toggleAttachment;
     };
 

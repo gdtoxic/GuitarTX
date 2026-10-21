@@ -11,10 +11,13 @@
 #include "PresetManager.h"
 #include "RackComponent.h"
 #include "TunerComponent.h"
+#include "MidiController.h"
+#include "MidiWindow.h"
 
 //==============================================================================
 class MainComponent : public juce::Component,
                       public juce::DragAndDropContainer,
+                      public MidiLearnHost,
                       private juce::Timer,
                       private juce::ChangeListener
 {
@@ -44,6 +47,13 @@ private:
     void updateMasterButton();
     void setTunerVisible(bool shouldShow);
 
+    // MIDI
+    void setupMidi();
+    void saveMidiSettings();
+    void showMidiWindow();
+    void showMidiMenu(EffectBase& effect, const juce::String& parameterId, juce::Component& target) override;
+    void showTransientStatus(const juce::String& text, double seconds = 4.0);
+
     void setupKnob(juce::Slider& knob, juce::Label& label, const juce::String& name);
 
     // Сохранение состояния (цепочка + сессия: gain'ы и текущий пресет)
@@ -65,6 +75,7 @@ private:
     juce::Label mainLaneLabel, parallelLaneLabel;
     juce::TextButton audioSettingsButton { "Audio Settings" };
     juce::TextButton tunerButton { "TUNER" };
+    juce::TextButton midiButton  { "MIDI" };
     juce::Label statusLabel;
 
     // Входной/выходной gain и индикаторы
@@ -84,6 +95,15 @@ private:
 
     // Поверх всего остального (добавляется последним)
     TunerComponent tuner { audioEngine.getTuner() };
+
+    // MIDI: удаляется первым (колбэки ссылаются на UI выше)
+    MidiController midi { audioEngine };
+    std::unique_ptr<MidiWindow> midiWindow;
+
+    // Временное сообщение в строке статуса (MIDI Learn и т.п.)
+    juce::String transientStatus;
+    int transientTicks = 0;
+    int learnTicks     = 0;
 
     std::unique_ptr<juce::XmlElement> lastSavedRack, lastSavedSession;
     int saveTicks = 0;

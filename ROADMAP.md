@@ -19,8 +19,8 @@
 - 💡 Glitch / Stutter / Freeze — для «шумовых» вставок
 
 ## v0.3 — рабочий процесс
-- 🔜 **MIDI-управление**: смена пресетов, футсвитч, педаль экспрессии (Pitch Position, wah...)
-- 📋 **VST3-версия** — использование внутри DAW (Reaper, Cubase, FL…), standalone остаётся
+- ✅ **MIDI-управление**: MIDI Learn для любой ручки, футсвитчи momentary/latching, Program Change, next/prev, тюнер (v0.3.0)
+- 🔜 **VST3-версия** — использование внутри DAW (Reaper, Cubase, FL…), standalone остаётся
 - 📋 Рекордер: запись DI + обработанного сигнала в WAV (для re-amp)
 - 📋 Браузер пресетов: теги, поиск, импорт/экспорт
 - 💡 Snapshots A/B внутри пресета

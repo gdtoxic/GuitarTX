@@ -112,6 +112,8 @@ MainComponent::MainComponent()
     // Последним - чтобы лежал поверх педалборда
     addChildComponent(tuner);
 
+    setupMidi();
+
     lastSavedRack    = audioEngine.createRackState();
     lastSavedSession = createSessionState();
 
@@ -142,6 +144,9 @@ MainComponent::~MainComponent()
 
     saveStateIfChanged();
     saveDeviceState();
+
+    EffectPanel::setMidiLearnHost(nullptr);
+    midiWindow.reset();
 
     panelViewport.setViewedComponent(nullptr, false);
     panel.reset();
@@ -311,6 +316,145 @@ void MainComponent::setTunerVisible(bool shouldShow)
     saveStateIfChanged();
 }
 
+//==============================================================================
+// MIDI
+void MainComponent::setupMidi()
+{
+    auto& devices = audioEngine.getDeviceManager();
+    const auto saved = settings.loadXml("midi");
+
+    if (saved != nullptr)
+        midi.restoreFromXml(*saved);
+
+    // Первый запуск: включаем все MIDI-входы (дальше - как выбрано в Audio Settings)
+    if (saved == nullptr || ! saved->getBoolAttribute("inputsInitialised"))
+    {
+        for (const auto& device : juce::MidiInput::getAvailableDevices())
+            devices.setMidiInputDeviceEnabled(device.identifier, true);
+
+        saveMidiSettings();
+        saveDeviceState();
+    }
+
+    midi.attach(devices);
+
+    midi.onProgramChange = [this](int index)
+    {
+        const auto presets = presetManager.getPresets();
+
+        if (juce::isPositiveAndBelow(index, (int) presets.size()))
+        {
+            presetBar.loadPreset(presets[(size_t) index]);
+            showTransientStatus("MIDI: preset " + juce::String(index) + " - " + presets[(size_t) index].name);
+        }
+    };
+
+    midi.onPresetStep    = [this](int direction) { presetBar.step(direction); };
+    midi.onToggleTuner   = [this] { setTunerVisible(! tuner.isActive()); };
+    midi.onLearned       = [this](const MidiController::Mapping& m) { showTransientStatus("MIDI learned: " + midi.describe(m)); };
+    midi.onMappingsChanged = [this]
+    {
+        saveMidiSettings();
+
+        if (midiWindow != nullptr)
+            midiWindow->refresh();
+    };
+
+    EffectPanel::setMidiLearnHost(this);
+
+    midiButton.setTooltip("MIDI: pedals, footswitches, program change");
+    midiButton.onClick = [this] { showMidiWindow(); };
+    addAndMakeVisible(midiButton);
+}
+
+void MainComponent::saveMidiSettings()
+{
+    auto xml = midi.createXml();
+    xml->setAttribute("inputsInitialised", true);
+    settings.saveXml("midi", xml.get());
+}
+
+void MainComponent::showMidiWindow()
+{
+    if (midiWindow == nullptr)
+    {
+        midiWindow = std::make_unique<MidiWindow>(midi, audioEngine.getDeviceManager(),
+                                                  [this] { showAudioSettings(); });
+        midiWindow->centreAroundComponent(this, midiWindow->getWidth(), midiWindow->getHeight());
+    }
+
+    midiWindow->refresh();
+    midiWindow->setVisible(true);
+    midiWindow->toFront(true);
+}
+
+void MainComponent::showMidiMenu(EffectBase& effect, const juce::String& parameterId, juce::Component& target)
+{
+    const MidiController::LearnTarget learnTarget { parameterId.isEmpty() ? MidiController::Kind::footswitch
+                                                                          : MidiController::Kind::parameter,
+                                                    effect.getTypeId(), parameterId };
+    const auto* existing = midi.findMapping(learnTarget);
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader(midi.describeTarget(learnTarget));
+    menu.addItem(1, existing != nullptr ? "MIDI Learn  (now CC " + juce::String(existing->controller) + ")"
+                                        : juce::String("MIDI Learn"));
+
+    if (existing != nullptr)
+        menu.addItem(2, "Remove MIDI (CC " + juce::String(existing->controller) + ")");
+
+    if (midi.isLearning())
+        menu.addItem(3, "Cancel MIDI Learn");
+
+    menu.addSeparator();
+    menu.addItem(4, "MIDI window...");
+
+    juce::Component::SafePointer<MainComponent> safeThis(this);
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&target),
+                       [safeThis, learnTarget](int result)
+                       {
+                           if (safeThis == nullptr)
+                               return;
+
+                           auto& self = *safeThis;
+
+                           switch (result)
+                           {
+                               case 1:
+                                   self.midi.startLearn(learnTarget);
+                                   self.learnTicks = 30 * 15;
+                                   self.showTransientStatus("MIDI Learn: move a pedal or press a switch for  "
+                                                            + self.midi.describeTarget(learnTarget), 15.0);
+                                   break;
+
+                               case 2:
+                                   self.midi.removeMappingsFor(learnTarget);
+                                   self.showTransientStatus("MIDI removed: " + self.midi.describeTarget(learnTarget));
+                                   break;
+
+                               case 3:
+                                   self.midi.cancelLearn();
+                                   self.showTransientStatus("MIDI Learn cancelled");
+                                   break;
+
+                               case 4:
+                                   self.showMidiWindow();
+                                   break;
+
+                               default:
+                                   break;
+                           }
+                       });
+}
+
+void MainComponent::showTransientStatus(const juce::String& text, double seconds)
+{
+    transientStatus = text;
+    transientTicks  = juce::jmax(1, juce::roundToInt(seconds * 30.0));   // таймер 30 Гц
+    updateStatusLabel();
+}
+
 void MainComponent::onPresetLoaded()
 {
     // Цепочка заменена целиком: пересоздаём плитки и выбираем первую педаль
@@ -435,6 +579,15 @@ void MainComponent::updateStatusLabel()
     if (error.isNotEmpty())
         text += "  |  " + error;
 
+    // Временное сообщение (MIDI Learn и т.п.) - поверх строки устройства
+    if (transientStatus.isNotEmpty())
+    {
+        statusLabel.setText(transientStatus, juce::dontSendNotification);
+        statusLabel.setTooltip(transientStatus);
+        statusLabel.setColour(juce::Label::textColourId, GuitarTXLookAndFeel::accent);
+        return;
+    }
+
     statusLabel.setText(text, juce::dontSendNotification);
     statusLabel.setTooltip(text);
     statusLabel.setColour(juce::Label::textColourId,
@@ -492,6 +645,19 @@ void MainComponent::timerCallback()
 
     updateMasterButton();
 
+    // MIDI Learn: отмена, если за 15 с ничего не пришло
+    if (midi.isLearning() && --learnTicks <= 0)
+    {
+        midi.cancelLearn();
+        showTransientStatus("MIDI Learn cancelled: no controller moved");
+    }
+
+    if (transientTicks > 0 && --transientTicks == 0 && ! midi.isLearning())
+    {
+        transientStatus.clear();
+        updateStatusLabel();
+    }
+
     // Раз в ~2 секунды сохраняем состояние, если оно изменилось
     if (++saveTicks >= 60)
     {
@@ -522,6 +688,8 @@ void MainComponent::resized()
     audioSettingsButton.setBounds(header.removeFromRight(130).reduced(0, 8));
     header.removeFromRight(8);
     tunerButton.setBounds(header.removeFromRight(90).reduced(0, 8));
+    header.removeFromRight(8);
+    midiButton.setBounds(header.removeFromRight(70).reduced(0, 8));
     titleLabel.setBounds(header);
 
     // Тюнер закрывает всё ниже заголовка

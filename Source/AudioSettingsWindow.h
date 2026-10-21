@@ -17,12 +17,12 @@ public:
             deviceManager,
             0, 2,       // input channels min/max
             0, 2,       // output channels min/max
-            false,      // MIDI input selector
+            true,       // MIDI input selector (педали, контроллеры)
             false,      // MIDI output selector
             false,      // stereo pairs
             false);     // hideAdvancedOptionsWithButton
 
-        selector->setSize(520, 460);
+        selector->setSize(520, 560);
 
         setUsingNativeTitleBar(true);
         setContentOwned(selector, true);

@@ -9,6 +9,8 @@ Master compressor + limiter, Tuner, reorderable chain, parallel lane, presets.
 Run: GuitarTX.exe (no installer needed).
 Audio: Settings -> pick your audio interface (ASIO recommended), input/output channels.
 Tuner: TUNER button (Esc to close). Mutes the output while open (can be turned off).
+MIDI: MIDI button. Right-click a knob -> MIDI Learn (expression pedal), right-click a pedal title -> footswitch.
+     Program Change N -> preset N+1. Enable MIDI inputs in Settings.
 Presets: %APPDATA%\GuitarTX\Presets
 
 Source code: https://github.com/gdtoxic/GuitarTX
