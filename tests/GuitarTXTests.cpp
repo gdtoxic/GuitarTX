@@ -22,9 +22,15 @@
 #include "DistortionProcessor.h"
 #include "NoiseGateProcessor.h"
 #include <cstdio>
+#include <cstdlib>
 
 static int failures = 0;
-#define CHECK(cond, ...) do { if (!(cond)) { ++failures; std::printf("FAIL: " __VA_ARGS__); std::printf("\n"); } } while (0)
+// В GitHub Actions каждый провал дублируется аннотацией ::error:: (видна в сводке запуска)
+static const bool onCi = std::getenv("GITHUB_ACTIONS") != nullptr;
+#define CHECK(cond, ...) do { if (!(cond)) { ++failures; \
+    std::printf("FAIL: " __VA_ARGS__); std::printf("\n"); \
+    if (onCi) { std::printf("::error::" __VA_ARGS__); std::printf("\n"); } \
+    std::fflush(stdout); } } while (0)
 
 static void setParam(EffectBase& e, const char* id, float v)
 {
@@ -720,10 +726,13 @@ static void testCabinetClearIr()
     const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("guitartx_test_ir.wav");
     {
         juce::WavAudioFormat wav;
-        std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
         file.deleteFile();
-        stream = file.createOutputStream();
+        std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
+        CHECK(stream != nullptr, "cannot create test IR file");
+        if (stream == nullptr) return;
         auto writer = wav.createWriterFor(stream, juce::AudioFormatWriterOptions{}.withSampleRate(48000).withNumChannels(1).withBitsPerSample(24));
+        CHECK(writer != nullptr, "cannot create test IR writer");
+        if (writer == nullptr) return;
         juce::AudioBuffer<float> ir(1, 256); ir.clear(); ir.setSample(0, 0, 1.0f); ir.setSample(0, 10, 0.5f);
         writer->writeFromAudioSampleBuffer(ir, 0, 256);
     }
@@ -914,6 +923,15 @@ static void testRecorder()
     folder.deleteRecursively();
 }
 
+// Отметка этапа для CI: при падении процесса последняя отметка показывает, где
+static void stage(const char* name)
+{
+    if (onCi)
+        std::printf("::notice::test stage %s\n", name);
+
+    std::fflush(stdout);
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI init;
@@ -925,11 +943,17 @@ int main()
     testSpillover();
     testMidi();
     testTuner();
+    stage("testPresets");
     testPresets();
+    stage("testPitchLfo");
     testPitchLfo();
+    stage("testEqCurves");
     testEqCurves();
+    stage("testCabinetClearIr");
     testCabinetClearIr();
+    stage("testSnapshots");
     testSnapshots();
+    stage("testRecorder");
     testRecorder();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
