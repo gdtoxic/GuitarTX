@@ -1,5 +1,11 @@
 #include "EffectBase.h"
 
+namespace
+{
+    constexpr float  tailSilenceLevel   = 1.0e-5f;   // -100 dBFS
+    constexpr double tailSilenceSeconds = 0.3;        // столько тишины - и хвост закончился
+}
+
 //==============================================================================
 EffectBase::EffectBase(Layout layout)
     : parameters(*this, nullptr, "PARAMS", withEnabledParameter(std::move(layout)))
@@ -94,6 +100,11 @@ void EffectBase::prepareToPlay(double sampleRate, int maximumExpectedSamplesPerB
     const int maxBlock = juce::jmax(1, maximumExpectedSamplesPerBlock);
 
     dryBuffer.setSize(2, maxBlock, false, true, false);
+    feedGains.assign((size_t) maxBlock, 0.0f);
+
+    tailActive      = false;
+    silentSamples   = 0;
+    tailHoldSamples = juce::roundToInt(sampleRate * tailSilenceSeconds);
 
     const bool enabled = isEffectEnabled();
 
@@ -114,6 +125,12 @@ void EffectBase::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer
         return;
 
     wetMix.setTargetValue(isEffectEnabled() ? 1.0f : 0.0f);
+
+    if (hasSpillover())
+    {
+        processWithSpillover(buffer);
+        return;
+    }
 
     // Стабильное состояние: либо полностью включён, либо полностью в bypass
     if (! wetMix.isSmoothing())
@@ -171,5 +188,92 @@ void EffectBase::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer
 
         for (int ch = 0; ch < numChannels; ++ch)
             wet[ch][i] = dry[ch][i] + mix * (wet[ch][i] - dry[ch][i]);
+    }
+}
+
+//==============================================================================
+// Bypass с хвостом: на ВХОД эффекта плавно подаётся тишина, сухой сигнал идёт мимо.
+//   выход = эффект(g * x) + (1 - g) * сухой,  g: 1 -> 0 при выключении
+// Повторы/хвост доигрывают; когда хвост затих, обработка останавливается.
+void EffectBase::processWithSpillover(juce::AudioBuffer<float>& buffer)
+{
+    const int numSamples  = buffer.getNumSamples();
+    const int numChannels = juce::jmin(buffer.getNumChannels(), 2);
+
+    const bool steadyOff = ! wetMix.isSmoothing() && wetMix.getTargetValue() < 0.5f;
+
+    if (steadyOff && ! tailActive)
+    {
+        wasProcessing = false;
+
+        if (isParallelBranch())
+            buffer.clear();
+
+        return;
+    }
+
+    // Свежий старт (хвоста нет) - чистое состояние; во время хвоста - продолжаем его
+    if (! wasProcessing && ! tailActive)
+        resetEffect();
+
+    wasProcessing = true;
+
+    if (! steadyOff && ! wetMix.isSmoothing())
+    {
+        processEffect(buffer);
+        tailActive    = true;
+        silentSamples = 0;
+        return;
+    }
+
+    if (dryBuffer.getNumSamples() < numSamples)
+        dryBuffer.setSize(2, numSamples, false, false, true);
+
+    if ((int) feedGains.size() < numSamples)
+        feedGains.resize((size_t) numSamples);
+
+    for (int ch = 0; ch < numChannels; ++ch)
+    {
+        if (isParallelBranch())
+            dryBuffer.clear(ch, 0, numSamples);
+        else
+            dryBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
+    }
+
+    auto* const* data = buffer.getArrayOfWritePointers();
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const float g = wetMix.getNextValue();
+        feedGains[(size_t) i] = g;
+
+        for (int ch = 0; ch < numChannels; ++ch)
+            data[ch][i] *= g;
+    }
+
+    processEffect(buffer);
+
+    // Уровень хвоста - до подмешивания сухого
+    if (steadyOff)
+    {
+        float tailPeak = 0.0f;
+
+        for (int ch = 0; ch < numChannels; ++ch)
+            tailPeak = juce::jmax(tailPeak, buffer.getMagnitude(ch, 0, numSamples));
+
+        silentSamples = tailPeak < tailSilenceLevel ? silentSamples + numSamples : 0;
+
+        if (silentSamples >= tailHoldSamples)
+            tailActive = false;
+    }
+
+    const auto* const* dry = dryBuffer.getArrayOfReadPointers();
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const float dryGain = 1.0f - feedGains[(size_t) i];
+
+        for (int ch = 0; ch < numChannels; ++ch)
+            data[ch][i] += dryGain * dry[ch][i];
     }
 }

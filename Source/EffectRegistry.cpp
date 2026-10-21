@@ -9,6 +9,7 @@
 #include "PitchProcessor.h"
 #include "DelayProcessor.h"
 #include "ReverbProcessor.h"
+#include "EqProcessor.h"
 
 namespace
 {
@@ -33,6 +34,7 @@ const std::vector<EffectDescriptor>& EffectRegistry::getAll()
         describe<PitchProcessor>    ("Pitch (octave / whammy / dive)"),
         describe<DelayProcessor>    ("Delay (digital / tape / ping-pong)"),
         describe<ReverbProcessor>   ("Reverb (room / plate / hall)"),
+        describe<EqProcessor>       ("EQ (parametric)"),
         describe<ChaosProcessor>    ("Chaos (fuzz / crush / ring)"),
         describe<SubProcessor>      ("Sub 808", true),
     };

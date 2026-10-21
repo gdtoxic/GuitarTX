@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <complex>
 
 // Биквадратный фильтр (RBJ Audio EQ Cookbook), Transposed Direct Form II.
 // Коэффициенты считаются без выделения памяти - можно менять прямо в аудиопотоке.
@@ -62,6 +63,22 @@ public:
                         2.0 * ((a - 1.0) - (a + 1.0) * cosW),
                         (a + 1.0) - (a - 1.0) * cosW - sq);
     }
+
+    // Модуль АЧХ на частоте frequency (линейный) - для графиков и нормировки
+    double getMagnitude(double frequency, double sampleRate) const noexcept
+    {
+        const double w = juce::MathConstants<double>::twoPi * frequency / sampleRate;
+        const std::complex<double> z1 = std::polar(1.0, -w);
+        const std::complex<double> z2 = z1 * z1;
+
+        const auto numerator   = (double) b0 + (double) b1 * z1 + (double) b2 * z2;
+        const auto denominator = 1.0 + (double) a1 * z1 + (double) a2 * z2;
+
+        return std::abs(numerator / denominator);
+    }
+
+    // Пропускает всё без изменений
+    void setBypass() noexcept { setCoefficients(1.0, 0.0, 0.0, 1.0, 0.0, 0.0); }
 
     void reset() noexcept
     {

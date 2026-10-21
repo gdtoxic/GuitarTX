@@ -135,6 +135,10 @@ CabinetPanel::CabinetPanel(CabinetProcessor& cabinetToEdit)
     addAndMakeVisible(loadIrButton);
 
     addAndMakeVisible(irLabel);
+
+    if (auto* model = cabinet.getValueTreeState().getParameter("model"))
+        modelWatcher = std::make_unique<juce::ParameterAttachment>(*model, [this](float) { updateIrLabel(); });
+
     updateIrLabel();
 }
 
@@ -176,21 +180,27 @@ void CabinetPanel::chooseImpulseResponse()
 
 void CabinetPanel::updateIrLabel()
 {
-    const auto file = cabinet.getImpulseResponseFile();
+    const auto file    = cabinet.getImpulseResponseFile();
+    const auto builtIn = CabinetProcessor::getModelName(cabinet.getActiveBuiltInModel());
 
-    if (cabinet.hasImpulseResponse())
+    if (cabinet.isUsingImpulseResponse())
     {
         irLabel.setText(file.getFileName(), juce::dontSendNotification);
         irLabel.setColour(juce::Label::textColourId, juce::Colours::limegreen);
     }
+    else if (cabinet.hasImpulseResponse())
+    {
+        irLabel.setText(file.getFileName() + " (not used: Model = " + builtIn + ")", juce::dontSendNotification);
+        irLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
+    }
     else if (file != juce::File())
     {
-        irLabel.setText("IR not found: " + file.getFileName(), juce::dontSendNotification);
+        irLabel.setText("IR not found: " + file.getFileName() + "  ->  built-in " + builtIn, juce::dontSendNotification);
         irLabel.setColour(juce::Label::textColourId, juce::Colours::orange);
     }
     else
     {
-        irLabel.setText("No IR loaded (cabinet bypassed)", juce::dontSendNotification);
+        irLabel.setText("Built-in " + builtIn + "  (load an IR for your own cabinet)", juce::dontSendNotification);
         irLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
     }
 }
@@ -461,6 +471,128 @@ void ToneMatchPanel::analyseReference(const juce::File& file)
 }
 
 //==============================================================================
+//==============================================================================
+// График АЧХ EQ: те же фильтры, что и в звуке (EqProcessor::configure)
+class EqPanel::CurveView : public juce::Component,
+                           private juce::Timer
+{
+public:
+    explicit CurveView(EqProcessor& eqToShow) : eq(eqToShow)
+    {
+        setInterceptsMouseClicks(false, false);
+        startTimerHz(15);
+        timerCallback();
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+
+        g.setColour(juce::Colour(0xff15171a));
+        g.fillRoundedRectangle(bounds, 6.0f);
+
+        const auto plot = bounds.reduced(6.0f, 6.0f);
+        auto xFor = [&plot](double hz)
+        {
+            return plot.getX() + (float) (std::log(hz / minHz) / std::log(maxHz / minHz)) * plot.getWidth();
+        };
+        auto yFor = [&plot](float db)
+        {
+            return plot.getCentreY() - juce::jlimit(-rangeDb, rangeDb, db) / rangeDb * plot.getHeight() * 0.5f;
+        };
+
+        // Сетка: частоты и +-6/12 дБ
+        g.setFont(juce::FontOptions(10.0f));
+
+        for (double hz : { 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0 })
+        {
+            const float x = xFor(hz);
+            g.setColour(juce::Colours::white.withAlpha(0.07f));
+            g.drawVerticalLine((int) x, plot.getY(), plot.getBottom());
+            g.setColour(juce::Colours::white.withAlpha(0.3f));
+            g.drawText(hz >= 1000.0 ? juce::String(hz / 1000.0, 0) + "k" : juce::String((int) hz),
+                       juce::Rectangle<float>(x - 14.0f, plot.getBottom() - 12.0f, 28.0f, 12.0f),
+                       juce::Justification::centred);
+        }
+
+        for (float db : { -12.0f, -6.0f, 0.0f, 6.0f, 12.0f })
+        {
+            g.setColour(juce::Colours::white.withAlpha(juce::approximatelyEqual(db, 0.0f) ? 0.18f : 0.07f));
+            g.drawHorizontalLine((int) yFor(db), plot.getX(), plot.getRight());
+        }
+
+        // Кривая
+        juce::Path path;
+        const int steps = juce::jmax(2, (int) plot.getWidth());
+
+        for (int i = 0; i <= steps; ++i)
+        {
+            const double hz = minHz * std::pow(maxHz / minHz, (double) i / steps);
+            const auto   p  = juce::Point<float>(xFor(hz), yFor(EqProcessor::getResponseDb(bands, settings, hz, displayRate)));
+
+            if (i == 0) path.startNewSubPath(p);
+            else        path.lineTo(p);
+        }
+
+        g.setColour(juce::Colour(0xffff7828));
+        g.strokePath(path, juce::PathStrokeType(2.0f));
+    }
+
+private:
+    static constexpr double minHz = 20.0, maxHz = 20000.0, displayRate = 48000.0;
+    static constexpr float  rangeDb = 15.0f;
+
+    void timerCallback() override
+    {
+        const auto latest = eq.getSettings();
+
+        if (initialised && latest == settings)
+            return;
+
+        settings = latest;
+        EqProcessor::configure(bands, settings, displayRate);
+        initialised = true;
+        repaint();
+    }
+
+    EqProcessor& eq;
+    EqProcessor::Settings settings;
+    std::array<Biquad, EqProcessor::numBands> bands;
+    bool initialised = false;
+};
+
+EqPanel::EqPanel(EqProcessor& eqToEdit)
+    : EffectPanel(eqToEdit),
+      curve(std::make_unique<CurveView>(eqToEdit))
+{
+    addAndMakeVisible(*curve);
+}
+
+EqPanel::~EqPanel() = default;
+
+void EqPanel::resized()
+{
+    EffectPanel::resized();
+
+    // Повторяем раскладку базового класса, чтобы найти свободное место в последнем ряду
+    auto area = getLocalBounds().reduced(12, 8);
+    area.removeFromTop(titleHeight);
+
+    const int perRow    = getKnobsPerRow(area.getWidth() + 24);
+    const int knobWidth = juce::jlimit(knobMinWidth, knobMaxWidth, area.getWidth() / perRow);
+    const int count     = getNumControls();
+    const int rows      = (count + perRow - 1) / perRow;
+    const int lastRow   = count - (rows - 1) * perRow;
+
+    auto free = juce::Rectangle<int>(area.getX() + lastRow * knobWidth + 8,
+                                     area.getY() + (rows - 1) * knobHeight,
+                                     area.getRight() - (area.getX() + lastRow * knobWidth + 8),
+                                     knobHeight).reduced(0, 6);
+
+    curve->setVisible(free.getWidth() >= 160);
+    curve->setBounds(free);
+}
+
 std::unique_ptr<EffectPanel> createEffectPanel(EffectBase& effect)
 {
     if (auto* cabinet = dynamic_cast<CabinetProcessor*>(&effect))
@@ -468,6 +600,9 @@ std::unique_ptr<EffectPanel> createEffectPanel(EffectBase& effect)
 
     if (auto* toneMatch = dynamic_cast<ToneMatchProcessor*>(&effect))
         return std::make_unique<ToneMatchPanel>(*toneMatch);
+
+    if (auto* eq = dynamic_cast<EqProcessor*>(&effect))
+        return std::make_unique<EqPanel>(*eq);
 
     return std::make_unique<EffectPanel>(effect);
 }

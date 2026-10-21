@@ -15,13 +15,14 @@ Standalone гитарный процессор на **JUCE** (Windows). Цель
 | Noise Gate | Гейт для хай-гейна |
 | Overdrive | Буст / мягкий перегруз перед дисторшном |
 | Distortion | Тугой хай-гейн: 2 каскада клиппинга, 4x oversampling, пост-EQ |
-| Cabinet | Свёртка с IR кабинета (загрузка своих `.wav`) |
+| Cabinet | Свёртка с IR кабинета (загрузка своих `.wav`) или встроенные модели: 4x12 Modern / Vintage, 2x12 Open, 1x12 Combo |
 | Tone Match | Подгонка тембра под эталонную запись (минимально-фазовый EQ, без задержки) |
 | Sub 808 | Саб-бас по высоте гитары (YIN-трекинг, Sine / Square / Divider, Punch) |
 | Chaos | Fuzz / ring mod / bitcrush / downsample / жёсткий гейт |
 | Pitch | Октавер / whammy / pitch-drop: сдвиг ±24 полутона (и для аккордов), режимы Static / Dive / Rise |
 | Delay | Digital / Tape / Ping-Pong, до 2 с, tone и low cut в петле, модуляция, duck |
 | Reverb | Room / Plate / Hall (FDN), decay 0.2–20 с, pre-delay, damping, low cut, duck |
+| EQ | Параметрический: low cut, low shelf, 2 колокола, high shelf, high cut — с графиком АЧХ |
 
 - **Master** — компрессор + lookahead-лимитер на выходе.
 - **Tuner** — кнопка TUNER (Esc — закрыть): нота, стрелка в центах, частота. Точность < 1 цента от drop-A (27.5 Гц), глушит выход на время настройки, эталон A4 = 430…450 Гц.

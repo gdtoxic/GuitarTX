@@ -32,6 +32,8 @@ public:
     double getTailLengthSeconds() const override { return 20.0; }
 
 protected:
+    bool hasSpillover() const override { return true; }   // хвост доигрывает после выключения
+
     void prepareEffect(double sampleRate, int maxBlockSize) override;
     void processEffect(juce::AudioBuffer<float>& buffer) override;
     void resetEffect() override;

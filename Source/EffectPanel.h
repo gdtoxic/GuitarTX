@@ -4,6 +4,7 @@
 #include "EffectBase.h"
 #include "CabinetProcessor.h"
 #include "ToneMatchProcessor.h"
+#include "EqProcessor.h"
 
 // Панель параметров выбранной педали.
 // Слайдеры строятся автоматически по параметрам эффекта (кроме "enabled",
@@ -35,6 +36,17 @@ protected:
 
     EffectBase& effect;
 
+    // Раскладка ручек (для наследников с собственными элементами)
+    static constexpr int titleHeight  = 30;
+    static constexpr int knobHeight   = 118;   // подпись + ручка + значение
+    static constexpr int knobMinWidth = 72;
+    static constexpr int knobMaxWidth = 96;
+
+    // Сколько ручек помещается в ряд при текущей ширине
+    static int getKnobsPerRow(int width);
+
+    int getNumControls() const noexcept { return (int) controls.size(); }
+
 private:
     // Ручка для числовых параметров, переключатель - для bool
     struct ParameterControl
@@ -48,14 +60,6 @@ private:
     };
 
     void timerCallback() override;
-
-    static constexpr int titleHeight = 30;
-    static constexpr int knobHeight   = 118;   // подпись + ручка + значение
-    static constexpr int knobMinWidth = 72;
-    static constexpr int knobMaxWidth = 96;
-
-    // Сколько ручек помещается в ряд при текущей ширине
-    static int getKnobsPerRow(int width);
 
     juce::Label titleLabel;
     juce::Label statusLabel;   // EffectBase::getStatusText(), например GR у мастера
@@ -84,6 +88,24 @@ private:
     juce::TextButton loadIrButton { "Load IR..." };
     juce::Label      irLabel;
     std::unique_ptr<juce::FileChooser> fileChooser;
+
+    // Смена Model -> обновить подпись (колбэк приходит в message thread)
+    std::unique_ptr<juce::ParameterAttachment> modelWatcher;
+};
+
+//==============================================================================
+// EQ: ручки + график АЧХ в свободной части последнего ряда
+class EqPanel : public EffectPanel
+{
+public:
+    explicit EqPanel(EqProcessor& eqToEdit);
+    ~EqPanel() override;
+
+    void resized() override;
+
+private:
+    class CurveView;
+    std::unique_ptr<CurveView> curve;
 };
 
 //==============================================================================

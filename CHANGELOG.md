@@ -2,6 +2,22 @@
 
 All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
 
+## [0.2.2] - 2026-10-21
+
+### Added
+- **Built-in cabinet models** — the Cabinet works without an IR file: 4x12 Modern, 4x12 Vintage, 2x12 Open,
+  1x12 Combo (new **Model** knob). **Auto** (default) uses the loaded IR, otherwise 4x12 Modern —
+  factory presets now sound right straight after install. Models are loudness-matched; Cab Level works without an IR.
+- **EQ** — parametric equalizer: Low Cut, Low shelf, two peaking bands (Freq / Gain / Q), High shelf, High Cut, Level,
+  with a live frequency-response graph.
+- **Delay and Reverb tails spill over** when the pedal is switched off: repeats and the reverb tail ring out naturally;
+  processing stops once the tail has died away.
+
+### Changed
+- Default window height 820 px; the effect panel scrolls if it does not fit.
+- Factory preset levels re-balanced for the built-in cabinet (cleans closer to the distorted presets).
+- Full Rig includes EQ (off).
+
 ## [0.2.1] - 2026-10-21
 
 ### Added
@@ -58,6 +74,7 @@ First public release.
 - Master compressor + lookahead limiter.
 - Factory and user presets (`%APPDATA%\GuitarTX\Presets`).
 
+[0.2.2]: https://github.com/gdtoxic/GuitarTX/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/gdtoxic/GuitarTX/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/gdtoxic/GuitarTX/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/gdtoxic/GuitarTX/compare/v0.1.1...v0.1.2

@@ -9,6 +9,7 @@
 #include "PitchProcessor.h"
 #include "DelayProcessor.h"
 #include "ReverbProcessor.h"
+#include "EqProcessor.h"
 
 namespace
 {
@@ -115,7 +116,7 @@ namespace
             { "Drone Wall", "Doom",
               { { DistortionProcessor::typeId, { { "gain", 52.0f }, { "tight", 50.0f }, { "bass", 6.0f },
                                                  { "mid", 0.0f }, { "treble", -4.0f }, { "presence", -4.0f },
-                                                 { "level", -15.0f } } },
+                                                 { "level", -13.5f } } },
                 { CabinetProcessor::typeId,    {} },
                 { SubProcessor::typeId,        { { "mode", 0.0f }, { "octave", -2.0f }, { "level", -14.0f },
                                                  { "drive", 20.0f }, { "tone", 80.0f }, { "punch", 0.0f },
@@ -230,7 +231,7 @@ namespace
             { "Drop Chug", "Nu-Metal",
               { { NoiseGateProcessor::typeId, { { "threshold", -46.0f }, { "hold", 12.0f }, { "release", 25.0f } } },
                 { OverdriveProcessor::typeId, { { "drive", 0.0f }, { "tone", 90.0f }, { "level", 4.0f } } },
-                { DistortionProcessor::typeId, { { "gain", 42.0f }, { "tight", 200.0f }, { "bass", 6.0f }, { "mid", -9.0f }, { "treble", 3.0f }, { "presence", 4.0f }, { "level", -12.5f } } },
+                { DistortionProcessor::typeId, { { "gain", 42.0f }, { "tight", 200.0f }, { "bass", 6.0f }, { "mid", -9.0f }, { "treble", 3.0f }, { "presence", 4.0f }, { "level", -11.5f } } },
                 { CabinetProcessor::typeId, {  } } },
               { { "threshold", -20.0f }, { "ratio", 4.0f }, { "attack", 10.0f }, { "release", 120.0f }, { "makeup", 4.0f } } },
 
@@ -238,7 +239,7 @@ namespace
             { "Scooped 7-String", "Nu-Metal",
               { { NoiseGateProcessor::typeId, { { "threshold", -48.0f }, { "hold", 15.0f }, { "release", 30.0f } } },
                 { OverdriveProcessor::typeId, { { "drive", 0.0f }, { "tone", 85.0f }, { "level", 3.0f } } },
-                { DistortionProcessor::typeId, { { "gain", 45.0f }, { "tight", 160.0f }, { "bass", 7.0f }, { "mid", -10.0f }, { "treble", 5.0f }, { "presence", 5.0f }, { "level", -13.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 45.0f }, { "tight", 160.0f }, { "bass", 7.0f }, { "mid", -10.0f }, { "treble", 5.0f }, { "presence", 5.0f }, { "level", -11.5f } } },
                 { CabinetProcessor::typeId, {  } } },
               { { "threshold", -22.0f }, { "ratio", 5.0f }, { "attack", 8.0f }, { "release", 100.0f }, { "makeup", 5.0f } } },
 
@@ -260,7 +261,7 @@ namespace
             // Чистый куплет: компрессия, короткий дилей, комната
             { "Clean Verse", "Nu-Metal",
               { { NoiseGateProcessor::typeId, { { "threshold", -70.0f }, { "release", 200.0f } } },
-                { CabinetProcessor::typeId, { { "level", 6.0f } } },
+                { CabinetProcessor::typeId, { { "level", 8.5f } } },
                 { DelayProcessor::typeId, { { "mode", 0.0f }, { "time", 300.0f }, { "feedback", 20.0f }, { "mix", 15.0f }, { "tone", 6000.0f }, { "lowcut", 200.0f }, { "mod", 0.0f }, { "duck", 0.0f } } },
                 { ReverbProcessor::typeId, { { "mode", 0.0f }, { "decay", 1.2f }, { "predelay", 20.0f }, { "size", 50.0f }, { "damping", 6000.0f }, { "lowcut", 150.0f }, { "mod", 30.0f }, { "mix", 20.0f }, { "duck", 0.0f } } } },
               { { "threshold", -24.0f }, { "ratio", 3.0f }, { "attack", 8.0f }, { "release", 180.0f }, { "makeup", 6.0f } } },
@@ -331,7 +332,7 @@ namespace
             { "Cold Wave Clean", "Industrial",
               { { NoiseGateProcessor::typeId, { { "threshold", -70.0f }, { "release", 200.0f } } },
                 { OverdriveProcessor::typeId, { { "drive", 4.0f }, { "tone", 80.0f }, { "level", 0.0f } } },
-                { CabinetProcessor::typeId, { { "level", 5.5f } } },
+                { CabinetProcessor::typeId, { { "level", 7.5f } } },
                 { DelayProcessor::typeId, { { "mode", 2.0f }, { "time", 300.0f }, { "feedback", 45.0f }, { "mix", 30.0f }, { "tone", 5000.0f }, { "lowcut", 200.0f }, { "mod", 10.0f }, { "duck", 0.0f } } },
                 { ReverbProcessor::typeId, { { "mode", 1.0f }, { "decay", 2.5f }, { "predelay", 10.0f }, { "size", 60.0f }, { "damping", 5000.0f }, { "lowcut", 200.0f }, { "mod", 40.0f }, { "mix", 28.0f }, { "duck", 0.0f } } } },
               { { "threshold", -24.0f }, { "ratio", 3.0f }, { "attack", 10.0f }, { "release", 150.0f }, { "makeup", 5.0f } } },
@@ -381,7 +382,7 @@ namespace
             { "Funeral Doom", "Extreme",
               { { NoiseGateProcessor::typeId, { { "threshold", -66.0f }, { "release", 300.0f } } },
                 { PitchProcessor::typeId, { { "shift", -12.0f }, { "mode", 0.0f }, { "mix", 35.0f }, { "tone", 2500.0f }, { "level", 0.0f }, { "time", 250.0f }, { "sens", -45.0f } } },
-                { DistortionProcessor::typeId, { { "gain", 48.0f }, { "tight", 50.0f }, { "bass", 6.0f }, { "mid", 0.0f }, { "treble", -3.0f }, { "presence", -3.0f }, { "level", -18.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 48.0f }, { "tight", 50.0f }, { "bass", 6.0f }, { "mid", 0.0f }, { "treble", -3.0f }, { "presence", -3.0f }, { "level", -16.5f } } },
                 { CabinetProcessor::typeId, {  } },
                 { ReverbProcessor::typeId, { { "mode", 2.0f }, { "decay", 9.0f }, { "predelay", 60.0f }, { "size", 80.0f }, { "damping", 4500.0f }, { "lowcut", 150.0f }, { "mod", 40.0f }, { "mix", 35.0f }, { "duck", 0.0f } } } } },
 
@@ -404,7 +405,7 @@ namespace
 
             // Шугейз: плывущие ленточные повторы в огромном зале
             { "Shoegaze Wash", "Alt Rock",
-              { { DistortionProcessor::typeId, { { "gain", 26.0f }, { "tight", 80.0f }, { "bass", 1.0f }, { "mid", -2.0f }, { "treble", 0.0f }, { "presence", -2.0f }, { "level", -10.5f } } },
+              { { DistortionProcessor::typeId, { { "gain", 26.0f }, { "tight", 80.0f }, { "bass", 1.0f }, { "mid", -2.0f }, { "treble", 0.0f }, { "presence", -2.0f }, { "level", -9.5f } } },
                 { CabinetProcessor::typeId, {  } },
                 { DelayProcessor::typeId, { { "mode", 1.0f }, { "time", 450.0f }, { "feedback", 45.0f }, { "mix", 30.0f }, { "tone", 4000.0f }, { "lowcut", 200.0f }, { "mod", 40.0f }, { "duck", 0.0f } } },
                 { ReverbProcessor::typeId, { { "mode", 2.0f }, { "decay", 6.0f }, { "predelay", 30.0f }, { "size", 80.0f }, { "damping", 5000.0f }, { "lowcut", 200.0f }, { "mod", 60.0f }, { "mix", 45.0f }, { "duck", 0.0f } } } } },
@@ -412,7 +413,7 @@ namespace
             // Чистые арпеджио: дилей и пластина, повторы уступают нотам
             { "Clean Arpeggio", "Alt Rock",
               { { NoiseGateProcessor::typeId, { { "threshold", -72.0f }, { "release", 200.0f } } },
-                { CabinetProcessor::typeId, { { "level", 6.0f } } },
+                { CabinetProcessor::typeId, { { "level", 8.5f } } },
                 { DelayProcessor::typeId, { { "mode", 0.0f }, { "time", 375.0f }, { "feedback", 30.0f }, { "mix", 25.0f }, { "tone", 7000.0f }, { "lowcut", 150.0f }, { "mod", 0.0f }, { "duck", 6.0f } } },
                 { ReverbProcessor::typeId, { { "mode", 1.0f }, { "decay", 1.8f }, { "predelay", 20.0f }, { "size", 50.0f }, { "damping", 6000.0f }, { "lowcut", 150.0f }, { "mod", 30.0f }, { "mix", 22.0f }, { "duck", 0.0f } } } },
               { { "threshold", -24.0f }, { "ratio", 3.0f }, { "attack", 8.0f }, { "release", 180.0f }, { "makeup", 6.0f } } },
@@ -421,7 +422,7 @@ namespace
             { "Dotted Eighth", "Alt Rock",
               { { NoiseGateProcessor::typeId, { { "threshold", -70.0f }, { "release", 200.0f } } },
                 { OverdriveProcessor::typeId, { { "drive", 6.0f }, { "tone", 70.0f }, { "level", -4.0f } } },
-                { CabinetProcessor::typeId, { { "level", 7.5f } } },
+                { CabinetProcessor::typeId, { { "level", 9.5f } } },
                 { DelayProcessor::typeId, { { "mode", 0.0f }, { "time", 346.0f }, { "feedback", 40.0f }, { "mix", 40.0f }, { "tone", 6500.0f }, { "lowcut", 200.0f }, { "mod", 0.0f }, { "duck", 0.0f } } },
                 { ReverbProcessor::typeId, { { "mode", 1.0f }, { "decay", 1.5f }, { "predelay", 20.0f }, { "size", 50.0f }, { "damping", 6000.0f }, { "lowcut", 150.0f }, { "mod", 30.0f }, { "mix", 15.0f }, { "duck", 0.0f } } } },
               { { "threshold", -22.0f }, { "ratio", 3.0f }, { "attack", 8.0f }, { "release", 150.0f }, { "makeup", 4.0f } } },
@@ -442,12 +443,12 @@ namespace
                 { CabinetProcessor::typeId,    {} } } },
 
             { "Clean (Cab Only)", "Clean & Crunch",
-              { { CabinetProcessor::typeId,    { { "level", 6.5f } } } } },
+              { { CabinetProcessor::typeId,    { { "level", 9.0f } } } } },
 
             // Чистый звук с мягкой компрессией (основа под будущие delay/reverb)
             { "Clean Compressed", "Clean & Crunch",
               { { NoiseGateProcessor::typeId,  { { "threshold", -72.0f }, { "release", 200.0f } } },
-                { CabinetProcessor::typeId,    { { "level", 6.0f } } } },
+                { CabinetProcessor::typeId,    { { "level", 8.5f } } } },
               { { "threshold", -26.0f }, { "ratio", 3.0f }, { "attack", 8.0f }, { "release", 180.0f },
                 { "makeup", 7.0f } } },
 
@@ -468,6 +469,7 @@ namespace
                 { OverdriveProcessor::typeId,  { { "drive", 3.0f }, { "tone", 70.0f }, { "level", 0.0f } } },
                 { DistortionProcessor::typeId, {} },
                 { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { EffectBase::enabledParameterId, 0.0f } } },
                 { ToneMatchProcessor::typeId,  { { EffectBase::enabledParameterId, 0.0f } } },
                 { PitchProcessor::typeId,      { { EffectBase::enabledParameterId, 0.0f } } },
                 { DelayProcessor::typeId,      { { EffectBase::enabledParameterId, 0.0f } } },

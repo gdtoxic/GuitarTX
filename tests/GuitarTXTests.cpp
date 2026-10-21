@@ -1,6 +1,7 @@
 // Интеграционные тесты GuitarTX (без аудиоустройства и UI):
 //   Pitch (точность, Dive/Rise, bypass), Delay (тайминги, ping-pong, стабильность, duck),
-//   Reverb (RT60, стабильность, стерео), узел тюнера (детекция, mute), загрузка всех заводских пресетов.
+//   Reverb (RT60, стабильность, стерео), встроенный кабинет, EQ, хвосты при bypass,
+//   узел тюнера (детекция, mute), загрузка всех заводских пресетов.
 //
 //   cmake -B build -DGUITARTX_BUILD_TESTS=ON && cmake --build build --config Release
 //   build/GuitarTXTests_artefacts/Release/GuitarTXTests
@@ -13,6 +14,8 @@
 #include "DelayProcessor.h"
 #include "ReverbProcessor.h"
 #include "Biquad.h"
+#include "CabinetProcessor.h"
+#include "EqProcessor.h"
 #include <cstdio>
 
 static int failures = 0;
@@ -328,6 +331,162 @@ static void testReverb()
     }
 }
 
+// Уровень синуса f на выходе эффекта (дБ относительно входа)
+template <typename Effect>
+static double sineGainDb(Effect& effect, double f, double sr = 48000.0)
+{
+    std::vector<float> in((size_t) (sr * 0.5));
+    for (size_t i = 0; i < in.size(); ++i) in[i] = 0.25f * (float) std::sin(juce::MathConstants<double>::twoPi * f * (double) i / sr);
+    auto out = run(effect, in);
+    double ei = 0.0, eo = 0.0;
+    for (size_t i = in.size() / 2; i < in.size(); ++i) { ei += (double) in[i] * in[i]; eo += (double) out[0][i] * out[0][i]; }
+    return 10.0 * std::log10(eo / ei);
+}
+
+static void testCabinet()
+{
+    const double sr = 48000;
+    const char* names[] { "Auto(no IR)", "4x12 Modern", "4x12 Vintage", "2x12 Open", "1x12 Combo" };
+    std::vector<double> noiseLevels;
+
+    for (int model = 0; model <= 4; ++model)
+    {
+        auto make = [&]
+        {
+            auto c = std::make_unique<CabinetProcessor>();
+            c->setPlayConfigDetails(2, 2, sr, 256);
+            setParam(*c, "model", (float) model);
+            c->prepareToPlay(sr, 256);
+            return c;
+        };
+
+        auto c40 = make(); auto c1k = make(); auto c10k = make();
+        const double g40 = sineGainDb(*c40, 40.0), g1k = sineGainDb(*c1k, 1000.0), g10k = sineGainDb(*c10k, 10000.0);
+
+        // Розовоподобный шум (фильтрованный белый) - сравнение громкости моделей
+        auto cn = make();
+        juce::Random rng(3);
+        std::vector<float> noise((size_t) sr);
+        float state = 0.0f;
+        for (auto& v : noise) { state = 0.97f * state + 0.03f * (rng.nextFloat() * 2.0f - 1.0f); v = state * 3.0f; }
+        auto out = run(*cn, noise);
+        double e = 0.0, ei = 0.0;
+        for (size_t i = noise.size() / 4; i < noise.size(); ++i) { e += (double) out[0][i] * out[0][i]; ei += (double) noise[i] * noise[i]; }
+        noiseLevels.push_back(10.0 * std::log10(e / ei));
+
+        std::printf("Cabinet %-12s: 40 Hz %+6.1f  1 kHz %+5.1f  10 kHz %+6.1f dB | noise %+5.1f dB | status %s\n",
+                    names[model], g40, g1k, g10k, noiseLevels.back(), cn->getStatusText().toRawUTF8());
+        CHECK(g10k - g1k < -20.0, "%s: no high cut", names[model]);
+        CHECK(g40 - g1k < -6.0, "%s: no low cut", names[model]);
+    }
+
+    const auto [mn, mx] = std::minmax_element(noiseLevels.begin(), noiseLevels.end());
+    CHECK(*mx - *mn < 4.0, "built-in models differ in loudness by %.1f dB", *mx - *mn);
+
+    // Level действует и без IR
+    CabinetProcessor c; c.setPlayConfigDetails(2, 2, sr, 256); setParam(c, "level", 6.0f); c.prepareToPlay(sr, 256);
+    CabinetProcessor ref; ref.setPlayConfigDetails(2, 2, sr, 256); ref.prepareToPlay(sr, 256);
+    const double diff = sineGainDb(c, 1000.0) - sineGainDb(ref, 1000.0);
+    std::printf("Cabinet level +6 dB without IR: %+.2f dB\n", diff);
+    CHECK(std::abs(diff - 6.0) < 0.3, "cabinet level without IR");
+}
+
+static void testEq()
+{
+    const double sr = 48000;
+
+    // По умолчанию - прозрачный
+    {
+        EqProcessor eq; eq.setPlayConfigDetails(2, 2, sr, 256); eq.prepareToPlay(sr, 256);
+        juce::Random rng(4);
+        std::vector<float> in((size_t) sr / 2);
+        for (auto& v : in) v = rng.nextFloat() - 0.5f;
+        auto out = run(eq, in);
+        float maxDiff = 0.0f;
+        for (size_t i = 0; i < in.size(); ++i) maxDiff = std::max(maxDiff, std::abs(out[0][i] - in[i]));
+        std::printf("EQ flat: max deviation %.2e\n", maxDiff);
+        CHECK(maxDiff < 1.0e-4f, "flat EQ changes the signal");
+    }
+
+    // Mid 1: +6 дБ на 1 кГц
+    {
+        EqProcessor eq; eq.setPlayConfigDetails(2, 2, sr, 256);
+        setParam(eq, "mid1Freq", 1000.0f); setParam(eq, "mid1Gain", 6.0f); setParam(eq, "mid1Q", 1.0f);
+        eq.prepareToPlay(sr, 256);
+        const double g = sineGainDb(eq, 1000.0);
+        const float graph = EqProcessor::getResponseDb([&] { std::array<Biquad, EqProcessor::numBands> b; EqProcessor::configure(b, eq.getSettings(), sr); return b; }(),
+                                                       eq.getSettings(), 1000.0, sr);
+        std::printf("EQ mid1 +6 dB @ 1 kHz: measured %+.2f dB, graph %+.2f dB\n", g, graph);
+        CHECK(std::abs(g - 6.0) < 0.3 && std::abs(graph - 6.0f) < 0.3f, "peak band gain");
+    }
+
+    // Low Cut 200 Гц: 50 Гц ослаблен (12 дБ/окт, 2 октавы ~ -24 дБ)
+    {
+        EqProcessor eq; eq.setPlayConfigDetails(2, 2, sr, 256); setParam(eq, "lowcut", 200.0f); eq.prepareToPlay(sr, 256);
+        const double g = sineGainDb(eq, 50.0);
+        std::printf("EQ low cut 200 Hz: 50 Hz %+.1f dB\n", g);
+        CHECK(g < -20.0, "low cut too weak");
+    }
+}
+
+static void testSpillover()
+{
+    const double sr = 48000;
+
+    // Delay: импульс, выключение через 100 мс - повтор на 200 мс всё равно звучит
+    {
+        DelayProcessor d; d.setPlayConfigDetails(2, 2, sr, 256);
+        setParam(d, "time", 200); setParam(d, "feedback", 40); setParam(d, "mix", 100);
+        setParam(d, "tone", 16000); setParam(d, "lowcut", 20);
+        d.prepareToPlay(sr, 256);
+
+        std::vector<float> in((size_t) (sr * 0.5), 0.0f);
+        in[0] = 1.0f;
+        auto out = run(d, in, 256, [&](int start) { if (start >= (int) (0.1 * sr)) setParam(d, EffectBase::enabledParameterId, 0.0f); });
+
+        float echo = 0.0f;
+        for (int i = (int) (0.2 * sr) - 50; i < (int) (0.2 * sr) + 50; ++i) echo = std::max(echo, std::abs(out[0][(size_t) i]));
+        std::printf("Spillover delay: echo after bypass %.3f\n", echo);
+        CHECK(echo > 0.5f, "delay tail cut on bypass");
+    }
+
+    // Reverb в параллельной ветке: после выключения - только хвост, без сухого
+    {
+        ReverbProcessor r; r.setPlayConfigDetails(2, 2, sr, 256); r.setParallelBranch(true);
+        setParam(r, "decay", 2.0f); setParam(r, "mix", 100);
+        r.prepareToPlay(sr, 256);
+
+        std::vector<float> in((size_t) (sr * 10.0));
+        for (size_t i = 0; i < in.size(); ++i) in[i] = i < (size_t) (sr * 0.5) ? 0.3f * tone((double) i / sr, 220.0) : 0.0f;
+        auto out = run(r, in, 256, [&](int start) { if (start >= (int) (0.5 * sr)) setParam(r, EffectBase::enabledParameterId, 0.0f); });
+
+        double tail = 0.0;
+        for (size_t i = (size_t) (0.6 * sr); i < (size_t) (1.0 * sr); ++i) tail += (double) out[0][i] * out[0][i];
+        float late = 0.0f;
+        for (size_t i = (size_t) (9.0 * sr); i < in.size(); ++i) late = std::max(late, std::abs(out[0][i]));
+        std::printf("Spillover reverb (parallel): tail energy %.3f, output after 9 s %.2e\n", tail, late);
+        CHECK(tail > 0.01, "reverb tail cut on bypass");
+        CHECK(late == 0.0f, "reverb keeps processing after tail ended");
+    }
+
+    // Main lane: после хвоста - выход в точности равен сухому
+    {
+        DelayProcessor d; d.setPlayConfigDetails(2, 2, sr, 256);
+        setParam(d, "time", 100); setParam(d, "feedback", 30); setParam(d, "mix", 50);
+        d.prepareToPlay(sr, 256);
+
+        juce::Random rng(5);
+        std::vector<float> in((size_t) (sr * 8.0));
+        for (auto& v : in) v = (rng.nextFloat() - 0.5f) * 0.5f;
+        auto out = run(d, in, 256, [&](int start) { if (start >= (int) (0.2 * sr)) setParam(d, EffectBase::enabledParameterId, 0.0f); });
+
+        float maxDiff = 0.0f;
+        for (size_t i = (size_t) (7.0 * sr); i < in.size(); ++i) maxDiff = std::max(maxDiff, std::abs(out[0][i] - in[i]));
+        std::printf("Spillover delay (main): after tail, output - dry = %.2e\n", maxDiff);
+        CHECK(maxDiff == 0.0f, "dry not restored after tail");
+    }
+}
+
 static void testTuner()
 {
     const double sr = 48000; const int block = 128;
@@ -377,6 +536,9 @@ int main()
     testPitch();
     testDelay();
     testReverb();
+    testCabinet();
+    testEq();
+    testSpillover();
     testTuner();
     testPresets();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);

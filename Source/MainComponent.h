@@ -80,6 +80,7 @@ private:
     RackComponent mainRack     { audioEngine, AudioEngine::Lane::main };
     RackComponent parallelRack { audioEngine, AudioEngine::Lane::parallel };
     std::unique_ptr<EffectPanel> panel;
+    juce::Viewport panelViewport;   // прокрутка, если панель выше свободного места
 
     // Поверх всего остального (добавляется последним)
     TunerComponent tuner { audioEngine.getTuner() };

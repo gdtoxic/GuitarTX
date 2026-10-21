@@ -105,6 +105,10 @@ MainComponent::MainComponent()
 
     refreshRacks();
 
+    panelViewport.setScrollBarsShown(true, false);
+    panelViewport.setScrollBarThickness(10);
+    addChildComponent(panelViewport);
+
     // Последним - чтобы лежал поверх педалборда
     addChildComponent(tuner);
 
@@ -127,7 +131,7 @@ MainComponent::MainComponent()
     startTimerHz(30);
 
     // setSize в конце, когда все компоненты уже созданы
-    setSize(780, 740);
+    setSize(780, 820);
 }
 
 //==============================================================================
@@ -139,6 +143,7 @@ MainComponent::~MainComponent()
     saveStateIfChanged();
     saveDeviceState();
 
+    panelViewport.setViewedComponent(nullptr, false);
     panel.reset();
     settingsWindow.reset();
 
@@ -251,17 +256,16 @@ void MainComponent::migrateLegacyState(const juce::XmlElement& legacy)
 
 void MainComponent::showPanelFor(EffectBase* effect)
 {
+    panelViewport.setViewedComponent(nullptr, false);
     panel.reset();
 
     if (effect != nullptr)
     {
         panel = createEffectPanel(*effect);
-        addAndMakeVisible(*panel);
-
-        // Новая панель не должна оказаться поверх открытого тюнера
-        if (tuner.isVisible())
-            tuner.toFront(false);
+        panelViewport.setViewedComponent(panel.get(), false);
     }
+
+    panelViewport.setVisible(panel != nullptr);
 
     updateMasterButton();
     resized();
@@ -562,8 +566,14 @@ void MainComponent::resized()
 
     area.removeFromTop(12);
 
-    // Параметры выбранной педали
+    // Параметры выбранной педали: целиком, а если не помещается - с прокруткой
     if (panel != nullptr)
-        panel->setBounds(area.removeFromTop(juce::jmin(area.getHeight(),
-                                                       panel->getPreferredHeight(area.getWidth()))));
+    {
+        const int preferred = panel->getPreferredHeight(area.getWidth());
+        const bool scroll   = preferred > area.getHeight();
+        const int width     = area.getWidth() - (scroll ? panelViewport.getScrollBarThickness() + 2 : 0);
+
+        panelViewport.setBounds(area.removeFromTop(juce::jmin(area.getHeight(), preferred)));
+        panel->setSize(width, panel->getPreferredHeight(width));
+    }
 }

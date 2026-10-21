@@ -55,6 +55,10 @@ protected:
     // Сброс внутреннего состояния DSP при выходе из полного bypass
     virtual void resetEffect() {}
 
+    // Хвост доигрывает после выключения (delay, reverb).
+    // Требование к эффекту: выход = вход + "мокрая" часть (линейно по сухому сигналу)
+    virtual bool hasSpillover() const { return false; }
+
     // Вызывается после loadState (message thread)
     virtual void stateRestored() {}
 
@@ -86,8 +90,16 @@ private:
     std::atomic<float>* enabledValue = nullptr;
     std::atomic<bool>   parallelBranch { false };
 
+    void processWithSpillover(juce::AudioBuffer<float>& buffer);
+
     // Только аудиопоток
     juce::AudioBuffer<float> dryBuffer;
+    std::vector<float>       feedGains;      // g по сэмплам для spillover
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> wetMix;
     bool wasProcessing = false;
+
+    // Spillover: хвост ещё звучит после выключения
+    bool tailActive       = false;
+    int  silentSamples    = 0;
+    int  tailHoldSamples  = 0;
 };
