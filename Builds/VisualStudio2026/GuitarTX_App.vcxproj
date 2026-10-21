@@ -4944,6 +4944,7 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include=".\resources.rc"/>
+    <None Include=".\icon.ico"/>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets"/>
 </Project>

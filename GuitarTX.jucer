@@ -80,6 +80,11 @@
       <FILE id="recrdH" name="Recorder.h" compile="0" resource="0" file="Source/Recorder.h"/>
       <FILE id="recrdC" name="Recorder.cpp" compile="1" resource="0" file="Source/Recorder.cpp"/>
     </GROUP>
+    <GROUP id="{6D1B2F0A-9C3E-4E55-A1B7-3F2C9E8D4A10}" name="Resources">
+      <FILE id="icn512" name="icon_512.png" compile="0" resource="0" file="Resources/icon_512.png"/>
+      <FILE id="icn032" name="icon_32.png" compile="0" resource="0" file="Resources/icon_32.png"/>
+      <FILE id="icnsvg" name="icon.svg" compile="0" resource="0" file="Resources/icon.svg"/>
+    </GROUP>
   </MAINGROUP>
   <MODULES>
     <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
@@ -99,7 +104,7 @@
   </MODULES>
   <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_ASIO="1" JUCE_ASIO_USE_EXTERNAL_SDK="0"/>
   <EXPORTFORMATS>
-    <VS2026 targetFolder="Builds/VisualStudio2026">
+    <VS2026 targetFolder="Builds/VisualStudio2026" bigIcon="icn512" smallIcon="icn032">
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="1" name="Debug" targetName="GuitarTX"/>
         <CONFIGURATION isDebug="0" name="Release" targetName="GuitarTX" useRuntimeLibDLL="0"/>

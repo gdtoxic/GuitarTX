@@ -67,6 +67,7 @@ Builds/            проект Visual Studio 2026
 GuitarTX.jucer     проект Projucer
 CMakeLists.txt     CMake-сборка (CI и локально)
 tests/             интеграционные тесты (DSP, тюнер, пресеты)
+Resources/         иконка приложения (SVG-исходник, PNG, многоразмерный .ico)
 packaging/         файлы для zip-релиза
 .github/           GitHub Actions, шаблоны issues
 CHANGELOG.md       история изменений

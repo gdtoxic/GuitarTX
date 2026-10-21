@@ -24,6 +24,8 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
   - *Insane*: Octave Machine Gun, Random Robot, Air Raid Siren, Dive Bomb Loop, Seasick, Glitch Stairs, Helicopter,
     Black Hole, Broken Radio, Slayer Scream, Stuck Wah Lead, Deathcore Abyss, Infinite Feedback.
 - MIDI actions: **Record start/stop** and **Snapshot A/B** (MIDI window -> Learn).
+- **App icon** — guitar pick with a clipped waveform (exe, window, taskbar); small sizes are drawn
+  separately with a bolder line so the icon stays readable at 16 px.
 
 ### Changed
 - MIDI window: two rows of Learn buttons.

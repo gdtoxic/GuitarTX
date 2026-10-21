@@ -9343,5 +9343,8 @@
     <ResourceCompile Include=".\resources.rc">
       <Filter>JUCE Library Code</Filter>
     </ResourceCompile>
+    <None Include=".\icon.ico">
+      <Filter>JUCE Library Code</Filter>
+    </None>
   </ItemGroup>
 </Project>

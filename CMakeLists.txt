@@ -40,6 +40,15 @@ juce_add_gui_app(GuitarTX
 # (JuceLibraryCode/ - только для Projucer, в CMake-сборку не подключается)
 juce_generate_juce_header(GuitarTX)
 
+# Иконка приложения (exe, окно, панель задач): готовый многоразмерный .ico,
+# мелкие размеры нарисованы отдельно (толще линии), а не уменьшены из 512 px
+if (WIN32)
+    set(GUITARTX_ICON_RC "${CMAKE_CURRENT_BINARY_DIR}/GuitarTX_icon.rc")
+    file(WRITE "${GUITARTX_ICON_RC}"
+         "IDI_ICON1 ICON DISCARDABLE \"${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.ico\"\n")
+    target_sources(GuitarTX PRIVATE "${GUITARTX_ICON_RC}")
+endif()
+
 file(GLOB GUITARTX_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.h")
