@@ -2,6 +2,34 @@
 
 All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
 
+## [0.3.1] - 2026-10-21
+
+### Added
+- **Recorder** — REC button in the header: two WAV files of equal length, **DI** (dry guitar, mono, before the tuner
+  and Input gain) and **Wet** (what you hear, stereo). 24-bit or 32-bit float, folder `Documents\GuitarTX\Recordings`
+  (changeable). Disk writing runs in a background thread.
+- **Re-amp** — menu next to REC: a DI file plays instead of the guitar through the current preset and the result is
+  recorded (2.5 s of tail after the end of the file for delay / reverb).
+- **Snapshots A/B** — A / B buttons next to the preset name: two sets of knob values and pedal On/Off for the same chain
+  (rhythm / lead). Instant switching, saved in presets and the session. Right-click: copy to the other snapshot.
+  Switching without edits does not mark the preset as modified.
+- **Pitch LFO** — cycles the pitch: Sine, Triangle, Square (octave trill), Saw Up, Saw Down, Random, Random Steps
+  (semitone-quantised), Rate 0.05–20 Hz, Depth ±24 st, Retrig (each pick attack restarts the cycle).
+- **EQ curves** — 16 factory EQ curves in the EQ panel (Tight Metal, Doom Weight, Thrash Scoop, Nu-Metal Low,
+  Djent Clank, Lead Push, Mix Ready, Fizz Killer, Telephone, AM Radio, Cocked Wah…), the active one is shown by name.
+- **Clear IR** button in the Cabinet — back to the built-in cabinet model.
+- **20 new factory presets (68 total)**:
+  - *Top Picks* (most with A/B snapshots): BFG Rhythm / Lead, Modern Metal A/B, Clean to Crush, Nu-Metal Drop A/B,
+    Eternal Hybrid, Thall, Arena Lead;
+  - *Insane*: Octave Machine Gun, Random Robot, Air Raid Siren, Dive Bomb Loop, Seasick, Glitch Stairs, Helicopter,
+    Black Hole, Broken Radio, Slayer Scream, Stuck Wah Lead, Deathcore Abyss, Infinite Feedback.
+- MIDI actions: **Record start/stop** and **Snapshot A/B** (MIDI window -> Learn).
+
+### Changed
+- MIDI window: two rows of Learn buttons.
+- Factory preset categories: Top Picks and Insane go before Utility (Program Change numbers of Tone Match Template
+  and Full Rig moved to the end of the list).
+
 ## [0.3.0] - 2026-10-21
 
 ### Added

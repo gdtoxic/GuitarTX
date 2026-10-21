@@ -2,6 +2,9 @@
 
 #include "ProcessorBase.h"
 
+#include <map>
+#include <optional>
+
 // Базовый класс эффектов педалборда.
 //
 // Даёт каждому эффекту:
@@ -38,9 +41,33 @@ public:
     void setParallelBranch(bool isParallel) noexcept { parallelBranch.store(isParallel); }
     bool isParallelBranch() const noexcept           { return parallelBranch.load(); }
 
+    // Форма состояния:
+    //  normal            - как есть (для сохранения и загрузки)
+    //  canonical         - для сравнения пресетов: значения округлены, снапшот B пишется,
+    //                      только если отличается от A. Активен A
+    //  canonicalSwapped  - то же, но сейчас активен B (A лежит в неактивном снапшоте)
+    enum class StateForm { normal, canonical, canonicalSwapped };
+
     // Вызываются из message thread
-    juce::ValueTree saveState();
+    juce::ValueTree saveState(StateForm form = StateForm::normal);
     void loadState(const juce::ValueTree& state);
+
+    // --- Snapshots A/B (message thread)
+    // Эффект помнит значения параметров второго (неактивного) снапшота.
+    // Нормированные значения 0..1 по id параметра
+    using ParameterValues = std::map<juce::String, float>;
+
+    ParameterValues captureParameters() const;
+    void applyParameters(const ParameterValues& values);
+
+    // Текущие значения <-> неактивный снапшот. Если второго снапшота ещё нет,
+    // он создаётся копией текущего (звук не меняется)
+    void swapSnapshot();
+
+    // Неактивный снапшот = копия текущих значений
+    void copyToOtherSnapshot()           { otherSnapshot = captureParameters(); }
+    void clearOtherSnapshot() noexcept   { otherSnapshot.reset(); }
+    bool hasOtherSnapshot() const noexcept { return otherSnapshot.has_value(); }
 
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
@@ -87,6 +114,10 @@ private:
     static constexpr double bypassFadeSeconds = 0.015;
 
     juce::AudioProcessorValueTreeState parameters;
+    std::optional<ParameterValues> otherSnapshot;
+
+    // Значение параметра текстом в единицах, с привязкой к шагу ручки (для каноничной формы)
+    juce::String canonicalText(const juce::String& parameterId, float normalisedValue) const;
     std::atomic<float>* enabledValue = nullptr;
     std::atomic<bool>   parallelBranch { false };
 

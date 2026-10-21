@@ -130,6 +130,13 @@ bool CabinetProcessor::loadImpulseResponse(const juce::File& file)
     return true;
 }
 
+void CabinetProcessor::clearImpulseResponse()
+{
+    // Свёртка остаётся загруженной, но не используется: аудиопоток смотрит только на irLoaded
+    irLoaded.store(false);
+    getValueTreeState().state.removeProperty(irPathProperty, nullptr);
+}
+
 juce::File CabinetProcessor::getImpulseResponseFile()
 {
     const auto path = getValueTreeState().state.getProperty(irPathProperty).toString();

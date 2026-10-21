@@ -54,6 +54,20 @@ private:
     void showMidiMenu(EffectBase& effect, const juce::String& parameterId, juce::Component& target) override;
     void showTransientStatus(const juce::String& text, double seconds = 4.0);
 
+    // Рекордер
+    void setupRecorder();
+    void saveRecorderSettings();
+    void toggleRecording();
+    void showRecorderMenu();
+    void chooseReampFile();
+    void updateRecordButton();
+
+    // Snapshots A/B
+    void setupSnapshots();
+    void selectSnapshot(int index);
+    void showSnapshotMenu(int index);
+    void updateSnapshotButtons();
+
     void setupKnob(juce::Slider& knob, juce::Label& label, const juce::String& name);
 
     // Сохранение состояния (цепочка + сессия: gain'ы и текущий пресет)
@@ -76,6 +90,34 @@ private:
     juce::TextButton audioSettingsButton { "Audio Settings" };
     juce::TextButton tunerButton { "TUNER" };
     juce::TextButton midiButton  { "MIDI" };
+    juce::TextButton recordButton { "REC" };
+    juce::TextButton recordMenuButton;
+    std::unique_ptr<juce::FileChooser> reampChooser;
+
+    // Кнопка с отдельной реакцией на правый клик (меню вместо нажатия)
+    struct RightClickButton : public juce::TextButton
+    {
+        std::function<void()> onRightClick;
+
+        void mouseDown(const juce::MouseEvent& e) override
+        {
+            rightClick = e.mods.isPopupMenu() && onRightClick != nullptr;
+
+            if (rightClick) onRightClick();
+            else            juce::TextButton::mouseDown(e);
+        }
+
+        void mouseUp(const juce::MouseEvent& e) override
+        {
+            if (! rightClick)
+                juce::TextButton::mouseUp(e);
+        }
+
+    private:
+        bool rightClick = false;
+    };
+
+    std::array<RightClickButton, 2> snapshotButtons;
     juce::Label statusLabel;
 
     // Входной/выходной gain и индикаторы

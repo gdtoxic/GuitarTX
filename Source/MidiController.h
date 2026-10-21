@@ -10,7 +10,7 @@
 //    где есть Pitch (берётся первый такой эффект в цепочке).
 //  - CC -> вкл/выкл педали (футсвитч): Momentary - каждое нажатие переключает,
 //    Latching - значение >= 64 включает, < 64 выключает.
-//  - CC -> действие: следующий / предыдущий пресет, тюнер.
+//  - CC -> действие: следующий / предыдущий пресет, тюнер, запись, снапшот A/B.
 //  - Program Change N -> пресет N по общему списку (factory, затем user).
 //
 // MIDI приходит в отдельном потоке: сообщения кладутся в lock-free очередь,
@@ -19,7 +19,7 @@ class MidiController : private juce::MidiInputCallback,
                        private juce::Timer
 {
 public:
-    enum class Kind { parameter, footswitch, nextPreset, previousPreset, tuner };
+    enum class Kind { parameter, footswitch, nextPreset, previousPreset, tuner, record, snapshot };
     enum class SwitchMode { momentary, latching };
 
     struct Mapping
@@ -74,6 +74,8 @@ public:
     std::function<void(int index)>       onProgramChange;   // выбрать пресет по номеру
     std::function<void(int direction)>   onPresetStep;      // +1 / -1
     std::function<void()>                onToggleTuner;
+    std::function<void()>                onToggleRecord;
+    std::function<void()>                onToggleSnapshot;
     std::function<void(const Mapping&)>  onLearned;
     std::function<void()>                onMappingsChanged; // сохранить настройки
     std::function<void()>                onActivity;        // пришло сообщение

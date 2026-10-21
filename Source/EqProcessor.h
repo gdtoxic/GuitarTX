@@ -39,6 +39,21 @@ public:
 
     Settings getSettings() const noexcept;
 
+    // Заводские кривые. Не указанные параметры - по умолчанию (ровно)
+    struct CurvePreset
+    {
+        const char* name;
+        std::vector<std::pair<const char*, float>> values;   // в единицах параметра
+    };
+
+    static const std::vector<CurvePreset>& getCurvePresets();
+
+    // Применить кривую (message thread). Включает EQ, если он был выключен
+    void applyCurvePreset(const CurvePreset& preset);
+
+    // Индекс кривой, совпадающей с текущими ручками, или -1
+    int findMatchingCurvePreset() const;
+
     // Общая настройка фильтров - для звука и для графика АЧХ
     static void configure(std::array<Biquad, numBands>& bands, const Settings& settings, double sampleRate);
 

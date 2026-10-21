@@ -64,6 +64,8 @@ public:
         setupLearn(learnNext, MidiController::Kind::nextPreset);
         setupLearn(learnPrevious, MidiController::Kind::previousPreset);
         setupLearn(learnTuner, MidiController::Kind::tuner);
+        setupLearn(learnRecord, MidiController::Kind::record);
+        setupLearn(learnSnapshot, MidiController::Kind::snapshot);
 
         cancelButton.onClick = [this] { controller.cancelLearn(); updateState(); };
         addAndMakeVisible(cancelButton);
@@ -77,7 +79,7 @@ public:
         hint.setJustificationType(juce::Justification::topLeft);
         addAndMakeVisible(hint);
 
-        setSize(560, 470);
+        setSize(560, 504);
         updateState();
         startTimerHz(10);
     }
@@ -111,12 +113,16 @@ public:
         hint.setBounds(area.removeFromBottom(54));
         area.removeFromBottom(8);
 
-        auto learnRow = area.removeFromBottom(28);
-        const int w = learnRow.getWidth() / 4;
-        learnNext.setBounds(learnRow.removeFromLeft(w).reduced(2, 0));
-        learnPrevious.setBounds(learnRow.removeFromLeft(w).reduced(2, 0));
-        learnTuner.setBounds(learnRow.removeFromLeft(w).reduced(2, 0));
-        cancelButton.setBounds(learnRow.reduced(2, 0));
+        auto learnRow2 = area.removeFromBottom(28);
+        area.removeFromBottom(6);
+        auto learnRow1 = area.removeFromBottom(28);
+        const int w = learnRow1.getWidth() / 3;
+        learnNext.setBounds(learnRow1.removeFromLeft(w).reduced(2, 0));
+        learnPrevious.setBounds(learnRow1.removeFromLeft(w).reduced(2, 0));
+        learnTuner.setBounds(learnRow1.reduced(2, 0));
+        learnRecord.setBounds(learnRow2.removeFromLeft(w).reduced(2, 0));
+        learnSnapshot.setBounds(learnRow2.removeFromLeft(w).reduced(2, 0));
+        cancelButton.setBounds(learnRow2.reduced(2, 0));
         area.removeFromBottom(6);
 
         auto buttons = area.removeFromBottom(28);
@@ -198,7 +204,8 @@ private:
     juce::ListBox list;
     juce::TextButton removeButton { "Remove" }, modeButton { "Mode: Momentary" }, clearButton { "Clear all" };
     juce::TextButton learnNext { "Learn: Next preset" }, learnPrevious { "Learn: Prev preset" },
-                     learnTuner { "Learn: Tuner" }, cancelButton { "Cancel learn" };
+                     learnTuner { "Learn: Tuner" }, learnRecord { "Learn: Record" },
+                     learnSnapshot { "Learn: Snapshot A/B" }, cancelButton { "Cancel learn" };
 };
 
 //==============================================================================
@@ -211,7 +218,7 @@ MidiWindow::MidiWindow(MidiController& controller, juce::AudioDeviceManager& dev
     setUsingNativeTitleBar(true);
     setContentOwned(content, true);
     setResizable(true, false);
-    setResizeLimits(480, 400, 1200, 1000);
+    setResizeLimits(480, 440, 1200, 1000);
 }
 
 MidiWindow::~MidiWindow() = default;

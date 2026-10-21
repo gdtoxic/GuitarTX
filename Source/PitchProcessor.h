@@ -19,6 +19,14 @@
 //  tone     - срез ФНЧ обработанного сигнала (убирает "песок" и гул)
 //  level    - выходная громкость (дБ)
 //
+//  LFO (цикл высоты) поверх режима:
+//  lfo      - форма: Off / Sine / Triangle / Square (трель) / Saw Up / Saw Down /
+//             Random (случайная высота на каждый цикл) / Random Steps (то же, по полутонам)
+//  lfoRate  - частота (Гц)
+//  lfoDepth - размах (полутоны): высота качается от сдвига режима до сдвига + depth.
+//             -12 = раз в цикл ныряет на октаву вниз и обратно, +7 = квинта вверх
+//  retrig   - каждая атака запускает цикл заново (LFO "привязан" к игре)
+//
 // Задержка обработанного сигнала - 8...28 мс (больше на низких аккордах).
 // Графу она не сообщается: иначе граф задержал бы весь риг ради выравнивания.
 class PitchProcessor : public EffectBase
@@ -39,11 +47,16 @@ protected:
 
 private:
     enum class Mode { staticShift = 0, dive = 1, rise = 2 };
+    enum class LfoShape { off = 0, sine, triangle, square, sawUp, sawDown, random, randomSteps };
 
     static Layout createLayout();
 
-    // Сдвиг для текущего сэмпла с учётом режима и детектора атаки
-    float updateEnvelope(float input, Mode mode, float targetShift);
+    // Сдвиг для текущего сэмпла с учётом режима и детектора атаки.
+    // attacked = true, если на этом сэмпле поймана атака
+    float updateEnvelope(float input, Mode mode, float targetShift, bool& attacked);
+
+    // Значение LFO 0..1 после сдвига фазы на deltaPhase (циклов)
+    float advanceLfo(LfoShape shape, float deltaPhase);
 
     static constexpr int maxChannels = 2;
     static constexpr int chunkSize   = 32;   // частота обновления сдвига (сэмплы)
@@ -56,6 +69,10 @@ private:
     std::atomic<float>& mixPercent;
     std::atomic<float>& toneHz;
     std::atomic<float>& levelDb;
+    std::atomic<float>& lfoChoice;
+    std::atomic<float>& lfoRateHz;
+    std::atomic<float>& lfoDepthSemitones;
+    std::atomic<float>& lfoRetrigger;
 
     PitchShifter shifter;
     Biquad       toneFilter;
@@ -71,6 +88,11 @@ private:
     // Огибающая Dive / Rise: 0 = начало движения, 1 = цель достигнута
     float glideProgress = 1.0f;
     bool  noteActive    = false;
+
+    // LFO (только аудиопоток)
+    float       lfoPhase  = 0.0f;
+    float       lfoRandom = 0.0f;   // текущее значение Random / Random Steps
+    juce::Random random;
 
     std::atomic<float> displayShift { 0.0f };
 

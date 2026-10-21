@@ -18,6 +18,8 @@ namespace
             case K::nextPreset:     return "nextPreset";
             case K::previousPreset: return "previousPreset";
             case K::tuner:          return "tuner";
+            case K::record:         return "record";
+            case K::snapshot:       return "snapshot";
         }
         return "parameter";
     }
@@ -25,7 +27,7 @@ namespace
     std::optional<MidiController::Kind> kindFromString(const juce::String& text)
     {
         using K = MidiController::Kind;
-        for (auto kind : { K::parameter, K::footswitch, K::nextPreset, K::previousPreset, K::tuner })
+        for (auto kind : { K::parameter, K::footswitch, K::nextPreset, K::previousPreset, K::tuner, K::record, K::snapshot })
             if (kindToString(kind) == text)
                 return kind;
         return std::nullopt;
@@ -216,6 +218,16 @@ void MidiController::applyController(int channel, int controller, int value)
                 if (newPress && onToggleTuner)
                     onToggleTuner();
                 break;
+
+            case Kind::record:
+                if (newPress && onToggleRecord)
+                    onToggleRecord();
+                break;
+
+            case Kind::snapshot:
+                if (newPress && onToggleSnapshot)
+                    onToggleSnapshot();
+                break;
         }
     }
 }
@@ -373,6 +385,8 @@ juce::String MidiController::describeTarget(const LearnTarget& target) const
         case Kind::nextPreset:     return "Next preset";
         case Kind::previousPreset: return "Previous preset";
         case Kind::tuner:          return "Tuner on/off";
+        case Kind::record:         return "Record start/stop";
+        case Kind::snapshot:       return "Snapshot A/B";
     }
 
     return {};

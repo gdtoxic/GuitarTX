@@ -10,6 +10,7 @@
 #include "DelayProcessor.h"
 #include "ReverbProcessor.h"
 #include "EqProcessor.h"
+#include "EffectRegistry.h"
 
 namespace
 {
@@ -18,6 +19,7 @@ namespace
         const char* typeId;
         std::vector<std::pair<const char*, float>> parameters;   // значения в единицах параметра
         bool parallel = false;                                    // параллельная ветка
+        std::vector<std::pair<const char*, float>> snapshotB {};  // отличия снапшота B от A
     };
 
     using ParameterList = std::vector<std::pair<const char*, float>>;
@@ -452,6 +454,311 @@ namespace
               { { "threshold", -26.0f }, { "ratio", 3.0f }, { "attack", 8.0f }, { "release", 180.0f },
                 { "makeup", 7.0f } } },
 
+            // ===== Top Picks ===================================================
+            // Готовые "рабочие" звуки с двумя снапшотами: A - ритм, B - соло / вторая часть песни
+
+            // Doom-ритм с делителем; B: лид с дилеем, без саба
+            { "BFG Rhythm / Lead", "Top Picks",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -54.0f }, { "hold", 35.0f }, { "release", 55.0f } },
+                  false, { { "threshold", -62.0f }, { "release", 150.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 3.0f }, { "tone", 72.0f }, { "level", 0.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 45.0f }, { "tight", 170.0f }, { "bass", 3.0f },
+                                                 { "mid", -6.0f }, { "treble", 3.0f }, { "presence", 3.0f },
+                                                 { "level", -15.0f } },
+                  false, { { "gain", 48.0f }, { "tight", 110.0f }, { "mid", 2.0f }, { "level", -14.6f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 35.0f }, { "lowFreq", 90.0f }, { "lowGain", 4.0f },
+                                                 { "mid1Freq", 300.0f }, { "mid1Gain", -3.0f },
+                                                 { "mid2Freq", 1800.0f }, { "mid2Gain", 2.0f }, { "highcut", 8500.0f } },
+                  false, { { "lowcut", 90.0f }, { "lowGain", 0.0f }, { "mid1Freq", 800.0f }, { "mid1Gain", 3.0f },
+                           { "mid1Q", 0.8f }, { "mid2Freq", 2500.0f } } },
+                { DelayProcessor::typeId,      { { EffectBase::enabledParameterId, 0.0f }, { "mode", 1.0f }, { "time", 420.0f },
+                                                 { "feedback", 35.0f }, { "mix", 20.0f }, { "duck", 8.0f } },
+                  false, { { EffectBase::enabledParameterId, 1.0f } } },
+                { SubProcessor::typeId,        { { "mode", 2.0f }, { "octave", -1.0f }, { "level", -14.0f },
+                                                 { "drive", 70.0f }, { "tone", 140.0f }, { "punch", 0.0f },
+                                                 { "decay", 200.0f }, { "threshold", -50.0f }, { "glide", 0.0f } },
+                  true, { { EffectBase::enabledParameterId, 0.0f } } } },
+              { { "threshold", -16.0f }, { "ratio", 3.0f }, { "attack", 15.0f }, { "release", 120.0f }, { "makeup", 3.0f } } },
+
+            // Современный металл: плотный чаг; B: соло с середины, delay + plate
+            { "Modern Metal A/B", "Top Picks",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -48.0f }, { "hold", 10.0f }, { "release", 25.0f } },
+                  false, { { "threshold", -60.0f }, { "hold", 40.0f }, { "release", 140.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 0.0f }, { "tone", 80.0f }, { "level", 2.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 40.0f }, { "tight", 180.0f }, { "bass", 3.0f },
+                                                 { "mid", -5.0f }, { "treble", 3.0f }, { "presence", 4.0f },
+                                                 { "level", -13.0f } },
+                  false, { { "gain", 46.0f }, { "tight", 120.0f }, { "mid", 1.0f }, { "level", -14.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 90.0f }, { "lowGain", -2.0f }, { "mid1Freq", 400.0f },
+                                                 { "mid1Gain", -3.0f }, { "mid1Q", 1.2f }, { "mid2Freq", 2500.0f },
+                                                 { "mid2Gain", 1.5f }, { "highcut", 9000.0f } },
+                  false, { { "mid1Freq", 800.0f }, { "mid1Gain", 3.5f }, { "mid1Q", 0.8f }, { "level", 1.0f } } },
+                { DelayProcessor::typeId,      { { EffectBase::enabledParameterId, 0.0f }, { "time", 380.0f },
+                                                 { "feedback", 30.0f }, { "mix", 18.0f }, { "duck", 10.0f } },
+                  false, { { EffectBase::enabledParameterId, 1.0f } } },
+                { ReverbProcessor::typeId,     { { EffectBase::enabledParameterId, 0.0f }, { "mode", 1.0f }, { "decay", 2.2f },
+                                                 { "mix", 16.0f }, { "duck", 6.0f } },
+                  false, { { EffectBase::enabledParameterId, 1.0f } } } } },
+
+            // Чистый куплет -> стена хай-гейна одним нажатием
+            { "Clean to Crush", "Top Picks",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -70.0f }, { "release", 200.0f } },
+                  false, { { "threshold", -50.0f }, { "hold", 15.0f }, { "release", 30.0f } } },
+                { DistortionProcessor::typeId, { { EffectBase::enabledParameterId, 0.0f }, { "gain", 44.0f }, { "tight", 160.0f },
+                                                 { "bass", 4.0f }, { "mid", -6.0f }, { "treble", 3.0f },
+                                                 { "presence", 4.0f }, { "level", -14.0f } },
+                  false, { { EffectBase::enabledParameterId, 1.0f }, { "level", -11.5f } } },
+                { CabinetProcessor::typeId,    { { "level", 7.5f } }, false, { { "level", 0.0f } } },
+                { EqProcessor::typeId,         { { "lowcut", 70.0f }, { "mid1Freq", 400.0f }, { "mid1Gain", -2.0f },
+                                                 { "highFreq", 5000.0f }, { "highGain", 4.0f }, { "highcut", 16000.0f } },
+                  false, { { "lowcut", 50.0f }, { "lowFreq", 80.0f }, { "lowGain", 4.0f }, { "mid1Freq", 700.0f },
+                           { "mid1Gain", -5.0f }, { "highGain", 1.0f }, { "highcut", 10000.0f } } },
+                { DelayProcessor::typeId,      { { "time", 360.0f }, { "feedback", 25.0f }, { "mix", 15.0f }, { "mod", 20.0f } },
+                  false, { { EffectBase::enabledParameterId, 0.0f } } },
+                { ReverbProcessor::typeId,     { { "mode", 2.0f }, { "decay", 3.0f }, { "mix", 25.0f } },
+                  false, { { "mode", 0.0f }, { "decay", 0.8f }, { "mix", 10.0f } } } },
+              { { "threshold", -24.0f }, { "ratio", 3.0f }, { "attack", 8.0f }, { "release", 150.0f }, { "makeup", 6.0f } } },
+
+            // Drop-строй без перестройки; B: whammy-визг октавой вверх
+            { "Nu-Metal Drop A/B", "Top Picks",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -50.0f }, { "hold", 15.0f }, { "release", 30.0f } } },
+                { PitchProcessor::typeId,      { { "shift", -2.0f }, { "mode", 0.0f }, { "mix", 100.0f }, { "tone", 9000.0f } },
+                  false, { { "shift", 12.0f }, { "mix", 45.0f }, { "tone", 6500.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 42.0f }, { "tight", 170.0f }, { "bass", 5.0f },
+                                                 { "mid", -8.0f }, { "treble", 3.0f }, { "presence", 4.0f },
+                                                 { "level", -13.5f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 50.0f }, { "lowFreq", 80.0f }, { "lowGain", 5.0f },
+                                                 { "mid1Freq", 700.0f }, { "mid1Gain", -6.0f }, { "mid1Q", 0.9f },
+                                                 { "mid2Freq", 3000.0f }, { "mid2Gain", 2.0f }, { "highcut", 10000.0f } } } } },
+
+            // Мясо Mick Gordon: дисторшн + октава вниз + 808 + щепоть хаоса
+            { "Eternal Hybrid", "Top Picks",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -52.0f }, { "hold", 30.0f }, { "release", 45.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 46.0f }, { "tight", 175.0f }, { "bass", 3.0f },
+                                                 { "mid", -6.0f }, { "treble", 3.0f }, { "presence", 3.0f },
+                                                 { "level", -15.0f } } },
+                { PitchProcessor::typeId,      { { "shift", -12.0f }, { "mode", 0.0f }, { "mix", 30.0f }, { "tone", 3000.0f } },
+                  false, { { "mode", 1.0f }, { "time", 350.0f }, { "mix", 60.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 35.0f }, { "lowFreq", 90.0f }, { "lowGain", 4.0f },
+                                                 { "mid1Freq", 300.0f }, { "mid1Gain", -3.0f },
+                                                 { "mid2Freq", 1800.0f }, { "mid2Gain", 2.0f }, { "highcut", 8500.0f } } },
+                { SubProcessor::typeId,        { { "mode", 0.0f }, { "octave", -1.0f }, { "level", -12.0f },
+                                                 { "drive", 45.0f }, { "tone", 110.0f }, { "punch", 4.0f },
+                                                 { "decay", 400.0f }, { "threshold", -52.0f } }, true },
+                { ChaosProcessor::typeId,      { { "fuzz", 35.0f }, { "bits", 7.0f }, { "rate", 5.0f },
+                                                 { "ring", 160.0f }, { "ringMix", 30.0f }, { "gate", -40.0f },
+                                                 { "level", -28.0f } }, true } },
+              { { "threshold", -16.0f }, { "ratio", 3.0f }, { "attack", 15.0f }, { "release", 120.0f }, { "makeup", 3.0f } } },
+
+            // Thall: djent-клац + октава вниз под гитарой
+            { "Thall", "Top Picks",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -46.0f }, { "attack", 0.5f }, { "hold", 5.0f }, { "release", 15.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 0.0f }, { "tone", 90.0f }, { "level", 3.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 41.0f }, { "tight", 200.0f }, { "bass", 2.0f },
+                                                 { "mid", -3.0f }, { "treble", 4.0f }, { "presence", 5.0f },
+                                                 { "level", -13.0f } } },
+                { PitchProcessor::typeId,      { { "shift", -12.0f }, { "mode", 0.0f }, { "mix", 40.0f }, { "tone", 2500.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 60.0f }, { "lowFreq", 150.0f }, { "lowGain", -1.0f },
+                                                 { "mid1Freq", 500.0f }, { "mid1Gain", -4.0f }, { "mid1Q", 1.5f },
+                                                 { "mid2Freq", 1600.0f }, { "mid2Gain", 4.0f }, { "mid2Q", 1.2f },
+                                                 { "highFreq", 4500.0f }, { "highGain", 3.0f }, { "highcut", 12000.0f } } } } },
+
+            // Соло на стадионе: середина, ping-pong и зал
+            { "Arena Lead", "Top Picks",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -64.0f }, { "hold", 60.0f }, { "release", 200.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 6.0f }, { "tone", 60.0f }, { "level", 0.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 47.0f }, { "tight", 100.0f }, { "bass", 0.0f },
+                                                 { "mid", 3.0f }, { "treble", 2.0f }, { "presence", 2.0f },
+                                                 { "level", -14.9f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 100.0f }, { "mid1Freq", 800.0f }, { "mid1Gain", 4.0f },
+                                                 { "mid1Q", 0.8f }, { "mid2Freq", 2500.0f }, { "mid2Gain", 2.0f },
+                                                 { "highcut", 8000.0f } } },
+                { DelayProcessor::typeId,      { { "mode", 2.0f }, { "time", 450.0f }, { "feedback", 40.0f },
+                                                 { "mix", 24.0f }, { "mod", 15.0f }, { "duck", 10.0f } } },
+                { ReverbProcessor::typeId,     { { "mode", 2.0f }, { "decay", 4.0f }, { "predelay", 40.0f },
+                                                 { "mix", 22.0f }, { "duck", 6.0f } } } } },
+
+            // ===== Insane ======================================================
+            // LFO на Pitch, глитчи и прочее безумие
+
+            // Пулемётная трель: каждая нота дробится между исходной высотой и октавой вниз
+            { "Octave Machine Gun", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -50.0f }, { "hold", 15.0f }, { "release", 30.0f } } },
+                { PitchProcessor::typeId,      { { "shift", 0.0f }, { "mode", 0.0f }, { "mix", 100.0f }, { "tone", 7000.0f },
+                                                 { "lfo", 3.0f }, { "lfoRate", 9.0f }, { "lfoDepth", -12.0f }, { "retrig", 1.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 46.0f }, { "tight", 170.0f }, { "bass", 3.0f },
+                                                 { "mid", -5.0f }, { "treble", 3.0f }, { "presence", 4.0f },
+                                                 { "level", -14.0f } } },
+                { CabinetProcessor::typeId,    {} } } },
+
+            // Случайные ноты в ладу полутонов: "робот поёт"
+            { "Random Robot", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -52.0f }, { "hold", 20.0f }, { "release", 40.0f } } },
+                { PitchProcessor::typeId,      { { "shift", 0.0f }, { "mode", 0.0f }, { "mix", 100.0f }, { "tone", 8000.0f },
+                                                 { "lfo", 7.0f }, { "lfoRate", 10.0f }, { "lfoDepth", 12.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 42.0f }, { "tight", 140.0f }, { "bass", 1.0f },
+                                                 { "mid", 0.0f }, { "treble", 3.0f }, { "presence", 3.0f },
+                                                 { "level", -14.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { DelayProcessor::typeId,      { { "mode", 2.0f }, { "time", 150.0f }, { "feedback", 35.0f }, { "mix", 20.0f } } },
+                { ChaosProcessor::typeId,      { { "fuzz", 30.0f }, { "bits", 8.0f }, { "rate", 3.0f },
+                                                 { "ring", 600.0f }, { "ringMix", 70.0f }, { "gate", -42.0f },
+                                                 { "level", -28.0f } }, true } } },
+
+            // Сирена: октава вверх и обратно по треугольнику
+            { "Air Raid Siren", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -62.0f }, { "hold", 60.0f }, { "release", 200.0f } } },
+                { PitchProcessor::typeId,      { { "shift", 0.0f }, { "mode", 0.0f }, { "mix", 100.0f }, { "tone", 8000.0f },
+                                                 { "lfo", 2.0f }, { "lfoRate", 0.6f }, { "lfoDepth", 12.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 48.0f }, { "tight", 110.0f }, { "bass", 0.0f },
+                                                 { "mid", 3.0f }, { "treble", 3.0f }, { "presence", 2.0f },
+                                                 { "level", -14.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { ReverbProcessor::typeId,     { { "mode", 2.0f }, { "decay", 3.5f }, { "mix", 22.0f } } } } },
+
+            // Каждая нота пикирует на две октавы, снова и снова
+            { "Dive Bomb Loop", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -55.0f }, { "hold", 40.0f }, { "release", 80.0f } } },
+                { PitchProcessor::typeId,      { { "shift", 0.0f }, { "mode", 0.0f }, { "mix", 100.0f }, { "tone", 6000.0f },
+                                                 { "lfo", 5.0f }, { "lfoRate", 1.5f }, { "lfoDepth", -24.0f }, { "retrig", 1.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 50.0f }, { "tight", 120.0f }, { "bass", 2.0f },
+                                                 { "mid", 0.0f }, { "treble", 2.0f }, { "presence", 2.0f },
+                                                 { "level", -15.0f } } },
+                { CabinetProcessor::typeId,    {} } } },
+
+            // Морская болезнь: медленное "плавание" высоты, плёночный дилей
+            { "Seasick", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -60.0f }, { "hold", 50.0f }, { "release", 150.0f } } },
+                { PitchProcessor::typeId,      { { "shift", 0.0f }, { "mode", 0.0f }, { "mix", 100.0f }, { "tone", 7000.0f },
+                                                 { "lfo", 1.0f }, { "lfoRate", 4.5f }, { "lfoDepth", -0.7f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 24.0f }, { "tone", 40.0f }, { "level", -8.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 30.0f }, { "tight", 70.0f }, { "bass", 5.0f },
+                                                 { "mid", 3.0f }, { "treble", -2.0f }, { "presence", -1.0f },
+                                                 { "level", -14.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { DelayProcessor::typeId,      { { "mode", 1.0f }, { "time", 520.0f }, { "feedback", 55.0f },
+                                                 { "mix", 30.0f }, { "mod", 70.0f } } } } },
+
+            // Лестница глитчей: случайные шаги вниз + биткраш в "телефоне"
+            { "Glitch Stairs", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -50.0f }, { "hold", 10.0f }, { "release", 25.0f } } },
+                { PitchProcessor::typeId,      { { "shift", 0.0f }, { "mode", 0.0f }, { "mix", 100.0f }, { "tone", 9000.0f },
+                                                 { "lfo", 7.0f }, { "lfoRate", 16.0f }, { "lfoDepth", -12.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 44.0f }, { "tight", 160.0f }, { "bass", 2.0f },
+                                                 { "mid", -2.0f }, { "treble", 3.0f }, { "presence", 3.0f },
+                                                 { "level", -14.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 300.0f }, { "mid2Freq", 1500.0f }, { "mid2Gain", 5.0f },
+                                                 { "highcut", 4500.0f }, { "level", 3.0f } },
+                  false, { { "lowcut", 20.0f }, { "mid2Gain", 0.0f }, { "highcut", 20000.0f }, { "level", 0.0f } } },
+                { ChaosProcessor::typeId,      { { "fuzz", 45.0f }, { "bits", 4.0f }, { "rate", 12.0f },
+                                                 { "ring", 220.0f }, { "ringMix", 20.0f }, { "gate", -38.0f },
+                                                 { "level", -24.0f } }, true } } },
+
+            // Вертолёт: быстрый пилообразный подъём на квинту + короткий ping-pong
+            { "Helicopter", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -55.0f }, { "hold", 30.0f }, { "release", 60.0f } } },
+                { PitchProcessor::typeId,      { { "shift", 0.0f }, { "mode", 0.0f }, { "mix", 100.0f }, { "tone", 8000.0f },
+                                                 { "lfo", 4.0f }, { "lfoRate", 12.0f }, { "lfoDepth", 7.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 44.0f }, { "tight", 130.0f }, { "bass", 2.0f },
+                                                 { "mid", 0.0f }, { "treble", 2.0f }, { "presence", 3.0f },
+                                                 { "level", -14.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { DelayProcessor::typeId,      { { "mode", 2.0f }, { "time", 85.0f }, { "feedback", 45.0f }, { "mix", 25.0f } } } } },
+
+            // Чёрная дыра: -2 октавы, саб, бесконечный дилей и 15-секундный зал
+            { "Black Hole", "Insane",
+              { { PitchProcessor::typeId,      { { "shift", -24.0f }, { "mode", 0.0f }, { "mix", 50.0f }, { "tone", 2500.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 50.0f }, { "tight", 50.0f }, { "bass", 6.0f },
+                                                 { "mid", 0.0f }, { "treble", -4.0f }, { "presence", -4.0f },
+                                                 { "level", -13.5f } } },
+                { CabinetProcessor::typeId,    {} },
+                { DelayProcessor::typeId,      { { "mode", 1.0f }, { "time", 900.0f }, { "feedback", 85.0f },
+                                                 { "mix", 30.0f }, { "tone", 2500.0f }, { "mod", 40.0f } } },
+                { ReverbProcessor::typeId,     { { "mode", 2.0f }, { "decay", 15.0f }, { "size", 100.0f },
+                                                 { "damping", 3000.0f }, { "mix", 45.0f } } },
+                { SubProcessor::typeId,        { { "mode", 2.0f }, { "octave", -2.0f }, { "level", -14.0f },
+                                                 { "drive", 60.0f }, { "tone", 90.0f }, { "decay", 1200.0f },
+                                                 { "threshold", -58.0f } }, true } },
+              { { "threshold", -20.0f }, { "ratio", 4.0f }, { "attack", 20.0f }, { "release", 300.0f }, { "makeup", 3.0f } } },
+
+            // Сломанное радио: AM-полоса, крошка битов, плавающая высота
+            { "Broken Radio", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -56.0f }, { "hold", 30.0f }, { "release", 60.0f } } },
+                { PitchProcessor::typeId,      { { "shift", 0.0f }, { "mode", 0.0f }, { "mix", 100.0f }, { "tone", 9000.0f },
+                                                 { "lfo", 6.0f }, { "lfoRate", 3.0f }, { "lfoDepth", -1.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 36.0f }, { "tight", 200.0f }, { "bass", -2.0f },
+                                                 { "mid", 4.0f }, { "treble", 2.0f }, { "presence", 2.0f },
+                                                 { "level", -13.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 300.0f }, { "mid2Freq", 1500.0f }, { "mid2Gain", 5.0f },
+                                                 { "highcut", 4500.0f }, { "level", 2.5f } } },
+                { DelayProcessor::typeId,      { { "mode", 1.0f }, { "time", 260.0f }, { "feedback", 40.0f },
+                                                 { "mix", 22.0f }, { "mod", 60.0f } } },
+                { ChaosProcessor::typeId,      { { "fuzz", 25.0f }, { "bits", 5.0f }, { "rate", 8.0f },
+                                                 { "ring", 50.0f }, { "ringMix", 15.0f }, { "gate", -40.0f },
+                                                 { "level", -26.0f } }, true } } },
+
+            // Крик Slayer'а: октавная трель вверх поверх дикого хай-гейна и ring-модуляции
+            { "Slayer Scream", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -58.0f }, { "hold", 40.0f }, { "release", 120.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 55.0f }, { "tight", 120.0f }, { "bass", 0.0f },
+                                                 { "mid", 3.0f }, { "treble", 3.0f }, { "presence", 3.0f },
+                                                 { "level", -16.0f } } },
+                { PitchProcessor::typeId,      { { "shift", 0.0f }, { "mode", 0.0f }, { "mix", 50.0f }, { "tone", 6000.0f },
+                                                 { "lfo", 3.0f }, { "lfoRate", 6.0f }, { "lfoDepth", 12.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { ChaosProcessor::typeId,      { { "fuzz", 40.0f }, { "bits", 9.0f }, { "rate", 2.0f },
+                                                 { "ring", 1200.0f }, { "ringMix", 65.0f }, { "gate", -46.0f },
+                                                 { "level", -26.0f } }, true } } },
+
+            // Застрявший вах + дилей: носовой лид из 70-х, доведённый до абсурда
+            { "Stuck Wah Lead", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -62.0f }, { "hold", 50.0f }, { "release", 160.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 18.0f }, { "tone", 60.0f }, { "level", -4.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 40.0f }, { "tight", 120.0f }, { "bass", 0.0f },
+                                                 { "mid", 4.0f }, { "treble", 2.0f }, { "presence", 2.0f },
+                                                 { "level", -13.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 150.0f }, { "mid2Freq", 1200.0f }, { "mid2Gain", 12.0f },
+                                                 { "mid2Q", 4.0f }, { "highcut", 6000.0f }, { "level", -6.0f } } },
+                { DelayProcessor::typeId,      { { "mode", 1.0f }, { "time", 330.0f }, { "feedback", 40.0f }, { "mix", 22.0f } } } } },
+
+            // Deathcore: бездна - максимум гейна, делитель на 2 октавы, жёсткий гейт
+            { "Deathcore Abyss", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -44.0f }, { "attack", 0.3f }, { "hold", 5.0f }, { "release", 12.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 0.0f }, { "tone", 85.0f }, { "level", 3.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 58.0f }, { "tight", 190.0f }, { "bass", 4.0f },
+                                                 { "mid", -7.0f }, { "treble", 3.0f }, { "presence", 5.0f },
+                                                 { "level", -16.8f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 45.0f }, { "lowFreq", 80.0f }, { "lowGain", 3.0f },
+                                                 { "mid1Freq", 650.0f }, { "mid1Gain", -5.0f }, { "highcut", 9500.0f } } },
+                { SubProcessor::typeId,        { { "mode", 2.0f }, { "octave", -2.0f }, { "level", -16.0f },
+                                                 { "drive", 80.0f }, { "tone", 120.0f }, { "punch", 0.0f },
+                                                 { "decay", 150.0f }, { "threshold", -46.0f }, { "glide", 0.0f } }, true } },
+              { { "threshold", -16.0f }, { "ratio", 4.0f }, { "attack", 10.0f }, { "release", 100.0f }, { "makeup", 3.0f } } },
+
+            // Бесконечный фидбек: дилей на грани самовозбуждения; B - "замороженный" хвост
+            { "Infinite Feedback", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -64.0f }, { "hold", 60.0f }, { "release", 200.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 46.0f }, { "tight", 100.0f }, { "bass", 0.0f },
+                                                 { "mid", 2.0f }, { "treble", 2.0f }, { "presence", 2.0f },
+                                                 { "level", -12.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { DelayProcessor::typeId,      { { "mode", 2.0f }, { "time", 600.0f }, { "feedback", 88.0f },
+                                                 { "mix", 35.0f }, { "tone", 4000.0f }, { "mod", 30.0f } },
+                  false, { { "feedback", 95.0f }, { "mix", 50.0f } } },
+                { ReverbProcessor::typeId,     { { "mode", 2.0f }, { "decay", 8.0f }, { "mix", 30.0f } },
+                  false, { { "decay", 20.0f }, { "mix", 55.0f } } } },
+              { { "threshold", -22.0f }, { "ratio", 4.0f }, { "attack", 20.0f }, { "release", 250.0f }, { "makeup", 3.0f } } },
+
             // ===== Utility =====================================================
             // Заготовка под Tone Match: Load reference -> Learn my tone
             { "Tone Match Template", "Utility",
@@ -482,6 +789,64 @@ namespace
     }
 
     const juce::Identifier presetNameAttr { "presetName" };
+
+    // Совпадает ли цепочка с эталоном старой версии. Параметры, которых в старой версии
+    // ещё не было (например, LFO у Pitch), не учитываются
+    bool matchesLegacyBaseline(juce::XmlElement current, const juce::XmlElement& legacy)
+    {
+        auto stripNewParameters = [](juce::XmlElement* params, const juce::XmlElement* reference)
+        {
+            if (params == nullptr || reference == nullptr)
+                return;
+
+            for (int i = params->getNumChildElements(); --i >= 0;)
+            {
+                auto* param = params->getChildElement(i);
+
+                if (reference->getChildByAttribute("id", param->getStringAttribute("id")) == nullptr)
+                    params->removeChildElement(param, true);
+            }
+        };
+
+        auto* currentChild = current.getFirstChildElement();
+        auto* legacyChild  = legacy.getFirstChildElement();
+
+        while (currentChild != nullptr && legacyChild != nullptr)
+        {
+            stripNewParameters(currentChild->getFirstChildElement(), legacyChild->getFirstChildElement());
+            currentChild = currentChild->getNextElement();
+            legacyChild  = legacyChild->getNextElement();
+        }
+
+        return current.isEquivalentTo(&legacy, false);
+    }
+
+    // Снапшот B заводского пресета: значения A + отличия B, нормированные 0..1
+    // (формат EffectBase::saveState). Диапазоны параметров берём у временного экземпляра эффекта
+    std::unique_ptr<juce::XmlElement> createSnapshotXml(const char* typeId, const ParameterList& a, const ParameterList& b)
+    {
+        auto effect = EffectRegistry::create(typeId);
+
+        if (effect == nullptr)
+            return nullptr;
+
+        auto setAll = [&effect](const ParameterList& values)
+        {
+            for (const auto& [id, value] : values)
+                if (auto* parameter = effect->getValueTreeState().getParameter(id))
+                    parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+        };
+
+        setAll(a);
+        setAll(b);
+
+        auto xml = std::make_unique<juce::XmlElement>("SNAPSHOT");
+
+        for (const auto& [id, value] : effect->captureParameters())
+            xml->setAttribute(id, (double) value);
+
+        return xml;
+    }
 }
 
 //==============================================================================
@@ -519,7 +884,7 @@ std::vector<PresetManager::Preset> PresetManager::getPresets() const
     });
 
     for (const auto& file : files)
-        result.push_back({ file.getFileNameWithoutExtension(), false, file });
+        result.push_back({ file.getFileNameWithoutExtension(), false, file, {} });
 
     return result;
 }
@@ -556,7 +921,12 @@ std::unique_ptr<juce::XmlElement> PresetManager::createFactoryXml(const juce::St
                 param->setAttribute("id", id);
                 param->setAttribute("value", (double) value);
             }
+
+            if (! spec.snapshotB.empty())
+                if (auto snapshot = createSnapshotXml(spec.typeId, spec.parameters, spec.snapshotB))
+                    params->addChildElement(snapshot.release());
         }
+
 
         if (! factory.master.empty())
             xml->createNewChildElement("Master")->addChildElement(createMasterParams(factory.master).release());
@@ -707,7 +1077,7 @@ void PresetManager::setCurrent(const juce::String& name, bool isFactory)
 {
     currentName      = name;
     currentIsFactory = isFactory;
-    baselineState    = engine.createRackState();
+    baselineState    = engine.createRackState(true);
 }
 
 void PresetManager::restoreCurrent(const juce::String& name, bool isFactory,
@@ -716,6 +1086,12 @@ void PresetManager::restoreCurrent(const juce::String& name, bool isFactory,
     currentName      = name;
     currentIsFactory = isFactory;
     baselineState    = std::move(baseline);
+
+    // Сессии до v0.3.1 хранили эталон в обычной форме: если цепочка с ним совпадает,
+    // пересоздаём эталон в каноничной форме, иначе пресет честно помечается изменённым
+    if (baselineState != nullptr && baselineState->getStringAttribute("form") != "canonical"
+        && matchesLegacyBaseline(*engine.createRackState(), *baselineState))
+        baselineState = engine.createRackState(true);
 }
 
 bool PresetManager::isModified() const
@@ -723,5 +1099,5 @@ bool PresetManager::isModified() const
     if (baselineState == nullptr)
         return hasCurrentPreset();
 
-    return ! engine.createRackState()->isEquivalentTo(baselineState.get(), false);
+    return ! engine.createRackState(true)->isEquivalentTo(baselineState.get(), false);
 }

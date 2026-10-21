@@ -120,7 +120,8 @@ private:
 
     CabinetProcessor& cabinet;
 
-    juce::TextButton loadIrButton { "Load IR..." };
+    juce::TextButton loadIrButton  { "Load IR..." };
+    juce::TextButton clearIrButton { "Clear IR" };
     juce::Label      irLabel;
     std::unique_ptr<juce::FileChooser> fileChooser;
 
@@ -140,7 +141,13 @@ public:
 
 private:
     class CurveView;
+
+    void showCurveMenu();
+    void updateCurveButton();
+
+    EqProcessor& eq;
     std::unique_ptr<CurveView> curve;
+    juce::TextButton curveButton;
 };
 
 //==============================================================================

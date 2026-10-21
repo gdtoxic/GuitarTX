@@ -68,9 +68,74 @@ std::atomic<float>& EffectBase::getParameterValue(const juce::String& parameterI
 }
 
 //==============================================================================
-juce::ValueTree EffectBase::saveState()
+namespace
 {
-    return parameters.copyState();
+    const juce::Identifier snapshotTag { "SNAPSHOT" };
+    const juce::Identifier idAttr      { "id" };
+    const juce::Identifier valueAttr   { "value" };
+}
+
+juce::String EffectBase::canonicalText(const juce::String& parameterId, float normalisedValue) const
+{
+    for (auto* parameter : getParameters())
+        if (auto* ranged = dynamic_cast<const juce::RangedAudioParameter*>(parameter))
+            if (ranged->getParameterID() == parameterId)
+            {
+                const auto& range = ranged->getNormalisableRange();
+                return juce::String(range.snapToLegalValue(range.convertFrom0to1(normalisedValue)), 3);
+            }
+
+    return juce::String(normalisedValue, 5);
+}
+
+juce::ValueTree EffectBase::saveState(StateForm form)
+{
+    auto state = parameters.copyState();
+
+    if (form == StateForm::normal)
+    {
+        if (otherSnapshot.has_value())
+        {
+            juce::ValueTree snapshot(snapshotTag);
+
+            for (const auto& [id, value] : *otherSnapshot)
+                snapshot.setProperty(juce::Identifier(id), (double) value, nullptr);
+
+            state.appendChild(snapshot, nullptr);
+        }
+
+        return state;
+    }
+
+    // Каноничная форма: A - основные значения, B - снапшот (если отличается).
+    // Значения - текстом с привязкой к шагу: float-шум после переключений не считается правкой
+    const auto live = captureParameters();
+    const bool swapped = form == StateForm::canonicalSwapped && otherSnapshot.has_value();
+    const auto& a = swapped ? *otherSnapshot : live;
+    const ParameterValues* b = otherSnapshot.has_value() ? (swapped ? &live : &*otherSnapshot) : nullptr;
+
+    for (const auto& [id, value] : a)
+        if (auto child = state.getChildWithProperty(idAttr, id); child.isValid())
+            child.setProperty(valueAttr, canonicalText(id, value), nullptr);
+
+    if (b != nullptr)
+    {
+        juce::ValueTree snapshot(snapshotTag);
+        bool differs = false;
+
+        for (const auto& [id, value] : *b)
+        {
+            const auto text = canonicalText(id, value);
+            const auto it   = a.find(id);
+            differs = differs || it == a.end() || canonicalText(id, it->second) != text;
+            snapshot.setProperty(juce::Identifier(id), text, nullptr);
+        }
+
+        if (differs)
+            state.appendChild(snapshot, nullptr);
+    }
+
+    return state;
 }
 
 void EffectBase::loadState(const juce::ValueTree& state)
@@ -78,8 +143,63 @@ void EffectBase::loadState(const juce::ValueTree& state)
     if (! state.hasType(parameters.state.getType()))
         return;
 
-    parameters.replaceState(state);
+    auto copy = state.createCopy();
+    otherSnapshot.reset();
+
+    if (auto snapshot = copy.getChildWithName(snapshotTag); snapshot.isValid())
+    {
+        ParameterValues values;
+
+        for (int i = 0; i < snapshot.getNumProperties(); ++i)
+        {
+            const auto name = snapshot.getPropertyName(i);
+            values[name.toString()] = juce::jlimit(0.0f, 1.0f, (float) (double) snapshot.getProperty(name));
+        }
+
+        otherSnapshot = std::move(values);
+        copy.removeChild(snapshot, nullptr);
+    }
+
+    parameters.replaceState(copy);
     stateRestored();
+}
+
+//==============================================================================
+EffectBase::ParameterValues EffectBase::captureParameters() const
+{
+    ParameterValues values;
+
+    for (auto* parameter : getParameters())
+        if (auto* ranged = dynamic_cast<const juce::RangedAudioParameter*>(parameter))
+            values[ranged->getParameterID()] = ranged->getValue();
+
+    return values;
+}
+
+void EffectBase::applyParameters(const ParameterValues& values)
+{
+    for (auto* parameter : getParameters())
+    {
+        auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+
+        if (ranged == nullptr)
+            continue;
+
+        // Параметры, которых не было при сохранении снапшота (новая версия), не трогаем
+        if (const auto it = values.find(ranged->getParameterID()); it != values.end())
+            if (std::abs(ranged->getValue() - it->second) > 1.0e-6f)
+                ranged->setValueNotifyingHost(it->second);
+    }
+}
+
+void EffectBase::swapSnapshot()
+{
+    auto live = captureParameters();
+
+    if (otherSnapshot.has_value())
+        applyParameters(*otherSnapshot);
+
+    otherSnapshot = std::move(live);
 }
 
 void EffectBase::getStateInformation(juce::MemoryBlock& destData)

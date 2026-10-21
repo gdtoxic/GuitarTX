@@ -7,15 +7,17 @@
 #include "GainProcessor.h"
 #include "MeterProcessor.h"
 #include "TunerProcessor.h"
+#include "Recorder.h"
 
 // Аудиодвижок: устройство + граф обработки.
 //
 // Граф:
 //                                 +-> [основная цепочка] ---------+
-//   Input -> MeterIn -> Tuner -> InputGain +                       +-> Master -> OutputGain -> Fade -> MeterOut -> Output
+//   Input -> RecIn -> MeterIn -> Tuner -> InputGain +              +-> Master -> OutputGain -> Fade -> MeterOut -> RecOut -> Output
 //                                 +-> [параллельный эффект 1] ----+
 //                                 +-> [параллельный эффект 2] ----+
 //
+// RecIn / RecOut - рекордер: re-amp и запись DI в начале, запись Wet в самом конце.
 // Tuner - анализ высоты для тюнера и mute всего, что после него.
 // Основная цепочка - эффекты последовательно. Параллельная ветка - каждый эффект
 // отдельно получает чистый сигнал, и его выход подмешивается к основному.
@@ -65,15 +67,31 @@ public:
     void clearEffects();
     void createDefaultRack();
 
-    // Состояние педалборда (порядок эффектов и их параметры) - это же формат пресета
-    std::unique_ptr<juce::XmlElement> createRackState() const;
+    // Состояние педалборда (порядок эффектов, параметры, снапшоты A/B) - это же формат пресета.
+    // canonical = true: всегда в виде "активен A" - для сравнения с загруженным пресетом
+    std::unique_ptr<juce::XmlElement> createRackState(bool canonical = false) const;
     bool restoreRackState(const juce::XmlElement& xml);
+
+    // Snapshots A/B: два набора значений параметров одной цепочки (включая On/Off педалей).
+    // 0 = A, 1 = B. Переключение мгновенное, без перестройки графа
+    int  getActiveSnapshot() const noexcept { return activeSnapshot; }
+    void selectSnapshot(int index);
+    void toggleSnapshot() { selectSnapshot(1 - activeSnapshot); }
+
+    // Неактивный снапшот = копия текущих значений
+    void copySnapshotToOther();
+
+    // Записываются ли значения второго снапшота хоть у одного эффекта
+    bool hasSnapshots() const;
 
     // Мастер-секция (компрессор + лимитер). Её состояние входит в пресет
     MasterProcessor& getMaster() noexcept { return *master; }
 
     // Тюнер: анализ входа и mute выхода
     TunerProcessor& getTuner() noexcept { return *tuner; }
+
+    // Рекордер DI + Wet и re-amp
+    Recorder& getRecorder() noexcept { return recorder; }
 
     // Пики для индикаторов (линейные значения), с max-hold и сбросом
     float getAndResetInputPeak();
@@ -105,6 +123,9 @@ private:
         return raw;
     }
 
+    // Узлы рекордера ссылаются на него: создаётся раньше графа
+    Recorder recorder;
+
     juce::AudioDeviceManager deviceManager;
     juce::AudioProcessorPlayer player;
     juce::AudioProcessorGraph graph;
@@ -112,6 +133,7 @@ private:
     juce::String lastDeviceError;
 
     Node::Ptr audioInputNode, audioOutputNode;
+    Node::Ptr recorderInNode, recorderOutNode;
     Node::Ptr meterInNode, tunerNode, gainNode, masterNode, outputGainNode, fadeNode, meterOutNode;
 
     MeterProcessor* meterIn  = nullptr;
@@ -130,6 +152,8 @@ private:
 
     // Удалённые узлы живут до завершения перестройки графа
     std::vector<Node::Ptr> retiredNodes;
+
+    int activeSnapshot = 0;
 
     float inputGainDb  = 0.0f;
     float outputGainDb = 0.0f;

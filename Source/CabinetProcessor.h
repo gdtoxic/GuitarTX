@@ -34,6 +34,9 @@ public:
     // Возвращает false, если файла нет.
     bool loadImpulseResponse(const juce::File& file);
 
+    // Убрать IR: кабинет переходит на встроенную модель (message thread)
+    void clearImpulseResponse();
+
     bool hasImpulseResponse() const noexcept { return irLoaded.load(); }
 
     // Путь из состояния (может указывать на отсутствующий файл)

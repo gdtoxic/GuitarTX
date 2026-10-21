@@ -19,6 +19,8 @@ namespace
     const juce::Identifier laneAttr    { "lane" };
     const juce::Identifier masterTag   { "Master" };
     const juce::Identifier versionAttr { "version" };
+    const juce::Identifier snapshotAttr { "snapshot" };
+    const juce::Identifier formAttr     { "form" };
 
     constexpr int rackStateVersion = 2;
 }
@@ -91,6 +93,9 @@ void AudioEngine::createGraph()
         std::make_unique<AudioGraphIOProcessor>(AudioGraphIOProcessor::audioOutputNode),
         std::nullopt, UpdateKind::none);
 
+    recorderInNode  = graph.addNode(recorder.createInputNode(),  std::nullopt, UpdateKind::none);
+    recorderOutNode = graph.addNode(recorder.createOutputNode(), std::nullopt, UpdateKind::none);
+
     meterIn  = addFixedNode(std::make_unique<MeterProcessor>("MeterIn"),  meterInNode);
     tuner    = addFixedNode(std::make_unique<TunerProcessor>(),           tunerNode);
     gain     = addFixedNode(std::make_unique<GainProcessor>(),            gainNode);
@@ -109,8 +114,9 @@ void AudioEngine::rebuildConnections()
         graph.removeConnection(connection, UpdateKind::none);
 
     std::vector<Node::Ptr> chain;
-    chain.reserve(rack.size() + 7);
+    chain.reserve(rack.size() + 9);
 
+    chain.push_back(recorderInNode);
     chain.push_back(meterInNode);
     chain.push_back(tunerNode);
     chain.push_back(gainNode);
@@ -119,6 +125,7 @@ void AudioEngine::rebuildConnections()
     chain.push_back(outputGainNode);
     chain.push_back(fadeNode);
     chain.push_back(meterOutNode);
+    chain.push_back(recorderOutNode);
 
     auto connectStereo = [this](juce::AudioProcessorGraph::NodeID from,
                                 juce::AudioProcessorGraph::NodeID to)
@@ -329,6 +336,9 @@ void AudioEngine::createDefaultRack()
 {
     clearEffects();
 
+    activeSnapshot = 0;
+    master->clearOtherSnapshot();
+
     insertEffect(NoiseGateProcessor::typeId);
     insertEffect(DistortionProcessor::typeId);
     insertEffect(CabinetProcessor::typeId);
@@ -341,11 +351,21 @@ void AudioEngine::resetToDefaults(EffectBase& effect)
         parameter->setValueNotifyingHost(parameter->getDefaultValue());
 }
 
-std::unique_ptr<juce::XmlElement> AudioEngine::createRackState() const
+std::unique_ptr<juce::XmlElement> AudioEngine::createRackState(bool canonical) const
 {
     auto xml = std::make_unique<juce::XmlElement>(rackTag);
 
     xml->setAttribute(versionAttr, rackStateVersion);
+
+    const auto form = ! canonical         ? EffectBase::StateForm::normal
+                    : activeSnapshot == 1 ? EffectBase::StateForm::canonicalSwapped
+                                          : EffectBase::StateForm::canonical;
+
+    if (activeSnapshot == 1 && ! canonical)
+        xml->setAttribute(snapshotAttr, "B");
+
+    if (canonical)
+        xml->setAttribute(formAttr, "canonical");
 
     for (auto lane : { Lane::main, Lane::parallel })
     {
@@ -359,12 +379,12 @@ std::unique_ptr<juce::XmlElement> AudioEngine::createRackState() const
             if (lane == Lane::parallel)
                 child->setAttribute(laneAttr, "parallel");
 
-            if (auto state = effect->saveState().createXml())
+            if (auto state = effect->saveState(form).createXml())
                 child->addChildElement(state.release());
         }
     }
 
-    if (auto state = master->saveState().createXml())
+    if (auto state = master->saveState(form).createXml())
         xml->createNewChildElement(masterTag)->addChildElement(state.release());
 
     return xml;
@@ -398,11 +418,57 @@ bool AudioEngine::restoreRackState(const juce::XmlElement& xml)
     auto* masterState = xml.getChildByName(masterTag);
 
     if (masterState != nullptr && masterState->getFirstChildElement() != nullptr)
+    {
         master->loadState(juce::ValueTree::fromXml(*masterState->getFirstChildElement()));
+    }
     else
+    {
         resetToDefaults(*master);
+        master->clearOtherSnapshot();
+    }
+
+    activeSnapshot = xml.getStringAttribute(snapshotAttr) == "B" ? 1 : 0;
 
     return true;
+}
+
+//==============================================================================
+// Snapshots A/B
+void AudioEngine::selectSnapshot(int index)
+{
+    index = juce::jlimit(0, 1, index);
+
+    if (index == activeSnapshot)
+        return;
+
+    for (auto lane : { Lane::main, Lane::parallel })
+        for (int i = 0; i < getNumEffects(lane); ++i)
+            getEffect(i, lane)->swapSnapshot();
+
+    master->swapSnapshot();
+    activeSnapshot = index;
+}
+
+void AudioEngine::copySnapshotToOther()
+{
+    for (auto lane : { Lane::main, Lane::parallel })
+        for (int i = 0; i < getNumEffects(lane); ++i)
+            getEffect(i, lane)->copyToOtherSnapshot();
+
+    master->copyToOtherSnapshot();
+}
+
+bool AudioEngine::hasSnapshots() const
+{
+    if (master->hasOtherSnapshot())
+        return true;
+
+    for (auto lane : { Lane::main, Lane::parallel })
+        for (int i = 0; i < getNumEffects(lane); ++i)
+            if (getEffect(i, lane)->hasOtherSnapshot())
+                return true;
+
+    return false;
 }
 
 //==============================================================================

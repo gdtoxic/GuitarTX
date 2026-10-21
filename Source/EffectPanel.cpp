@@ -169,6 +169,14 @@ CabinetPanel::CabinetPanel(CabinetProcessor& cabinetToEdit)
     loadIrButton.onClick = [this] { chooseImpulseResponse(); };
     addAndMakeVisible(loadIrButton);
 
+    clearIrButton.setTooltip("Remove the IR and use the built-in cabinet model");
+    clearIrButton.onClick = [this]
+    {
+        cabinet.clearImpulseResponse();
+        updateIrLabel();
+    };
+    addAndMakeVisible(clearIrButton);
+
     addAndMakeVisible(irLabel);
 
     if (auto* model = cabinet.getValueTreeState().getParameter("model"))
@@ -182,6 +190,8 @@ void CabinetPanel::layoutExtra(juce::Rectangle<int> area)
     area = area.reduced(0, 4);
 
     loadIrButton.setBounds(area.removeFromLeft(100));
+    area.removeFromLeft(6);
+    clearIrButton.setBounds(area.removeFromLeft(80));
     area.removeFromLeft(10);
     irLabel.setBounds(area);
 }
@@ -217,6 +227,8 @@ void CabinetPanel::updateIrLabel()
 {
     const auto file    = cabinet.getImpulseResponseFile();
     const auto builtIn = CabinetProcessor::getModelName(cabinet.getActiveBuiltInModel());
+
+    clearIrButton.setEnabled(file != juce::File());
 
     if (cabinet.isUsingImpulseResponse())
     {
@@ -519,6 +531,9 @@ public:
         timerCallback();
     }
 
+    // Ручки EQ изменились (из любого источника: мышь, MIDI, пресет)
+    std::function<void()> onSettingsChanged;
+
     void paint(juce::Graphics& g) override
     {
         const auto bounds = getLocalBounds().toFloat();
@@ -588,6 +603,9 @@ private:
         EqProcessor::configure(bands, settings, displayRate);
         initialised = true;
         repaint();
+
+        if (onSettingsChanged != nullptr)
+            onSettingsChanged();
     }
 
     EqProcessor& eq;
@@ -598,9 +616,47 @@ private:
 
 EqPanel::EqPanel(EqProcessor& eqToEdit)
     : EffectPanel(eqToEdit),
+      eq(eqToEdit),
       curve(std::make_unique<CurveView>(eqToEdit))
 {
     addAndMakeVisible(*curve);
+
+    curveButton.setTooltip("Factory EQ curves");
+    curveButton.onClick = [this] { showCurveMenu(); };
+    addAndMakeVisible(curveButton);
+
+    curve->onSettingsChanged = [this] { updateCurveButton(); };
+    updateCurveButton();
+}
+
+void EqPanel::updateCurveButton()
+{
+    const int index = eq.findMatchingCurvePreset();
+    curveButton.setButtonText("Curve: " + (index >= 0 ? juce::String(EqProcessor::getCurvePresets()[(size_t) index].name)
+                                                      : juce::String("Custom")) + juce::String::fromUTF8("  \xe2\x96\xbe"));
+}
+
+void EqPanel::showCurveMenu()
+{
+    const auto& presets = EqProcessor::getCurvePresets();
+    const int   current = eq.findMatchingCurvePreset();
+
+    juce::PopupMenu menu;
+
+    for (size_t i = 0; i < presets.size(); ++i)
+        menu.addItem((int) i + 1, presets[i].name, true, (int) i == current);
+
+    juce::Component::SafePointer<EqPanel> safeThis(this);
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&curveButton),
+                       [safeThis](int result)
+                       {
+                           if (safeThis == nullptr || result <= 0)
+                               return;
+
+                           safeThis->eq.applyCurvePreset(EqProcessor::getCurvePresets()[(size_t) (result - 1)]);
+                           safeThis->updateCurveButton();
+                       });
 }
 
 EqPanel::~EqPanel() = default;
@@ -608,6 +664,8 @@ EqPanel::~EqPanel() = default;
 void EqPanel::resized()
 {
     EffectPanel::resized();
+
+    curveButton.setBounds(getWidth() - 12 - 190, 10, 190, titleHeight - 6);
 
     // Повторяем раскладку базового класса, чтобы найти свободное место в последнем ряду
     auto area = getLocalBounds().reduced(12, 8);

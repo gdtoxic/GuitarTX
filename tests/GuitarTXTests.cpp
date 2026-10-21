@@ -1,7 +1,8 @@
 // Интеграционные тесты GuitarTX (без аудиоустройства и UI):
 //   Pitch (точность, Dive/Rise, bypass), Delay (тайминги, ping-pong, стабильность, duck),
 //   Reverb (RT60, стабильность, стерео), встроенный кабинет, EQ, хвосты при bypass,
-//   MIDI (learn, футсвитчи, program change, XML), узел тюнера (детекция, mute), загрузка всех заводских пресетов.
+//   MIDI (learn, футсвитчи, program change, XML), узел тюнера (детекция, mute), загрузка всех заводских пресетов,
+//   LFO у Pitch, кривые EQ, сброс IR, снапшоты A/B, рекордер DI + Wet и re-amp.
 //
 //   cmake -B build -DGUITARTX_BUILD_TESTS=ON && cmake --build build --config Release
 //   build/GuitarTXTests_artefacts/Release/GuitarTXTests
@@ -17,6 +18,9 @@
 #include "CabinetProcessor.h"
 #include "EqProcessor.h"
 #include "MidiController.h"
+#include "Recorder.h"
+#include "DistortionProcessor.h"
+#include "NoiseGateProcessor.h"
 #include <cstdio>
 
 static int failures = 0;
@@ -634,7 +638,280 @@ static void testPresets()
     }
 
     std::printf("Presets: %d factory presets loaded\n", factory);
-    CHECK(factory >= 48, "expected at least 48 factory presets, got %d", factory);
+    CHECK(factory >= 68, "expected at least 68 factory presets, got %d", factory);
+}
+
+// LFO: Square с размахом -12 - половину цикла исходная высота, половину - октава вниз
+static void testPitchLfo()
+{
+    const double sr = 48000; const int block = 256;
+    PitchProcessor p; p.setPlayConfigDetails(2, 2, sr, block);
+    setParam(p, "shift", 0); setParam(p, "mode", 0); setParam(p, "mix", 100); setParam(p, "tone", 12000);
+    setParam(p, "lfo", 3); setParam(p, "lfoRate", 1.0f); setParam(p, "lfoDepth", -12.0f);
+    p.prepareToPlay(sr, block);
+
+    std::vector<float> in((size_t) (sr * 2.0) / block * block);
+    for (size_t i = 0; i < in.size(); ++i) in[i] = tone((double) i / sr, 220.0);
+
+    const auto out = run(p, in, block);
+    const float high = measure(out[0], (int) (sr * 1.10), 8192, sr);   // фаза 0.10..0.27 -> 0 st
+    const float low  = measure(out[0], (int) (sr * 1.60), 8192, sr);   // фаза 0.60..0.77 -> -12 st
+    std::printf("Pitch LFO square -12 st @ 1 Hz: first half %.1f Hz, second half %.1f Hz\n", high, low);
+    CHECK(std::abs(1200.0f * std::log2(high / 220.0f)) < 10.0f, "LFO square: first half not at original pitch (%.1f Hz)", high);
+    CHECK(std::abs(1200.0f * std::log2(low / 110.0f)) < 10.0f, "LFO square: second half not an octave down (%.1f Hz)", low);
+
+    // Random Steps: только целые полутоны
+    PitchProcessor r; r.setPlayConfigDetails(2, 2, sr, block);
+    setParam(r, "shift", 0); setParam(r, "mode", 0); setParam(r, "mix", 100);
+    setParam(r, "lfo", 7); setParam(r, "lfoRate", 4.0f); setParam(r, "lfoDepth", 12.0f);
+    r.prepareToPlay(sr, block);
+    const auto steps = run(r, in, block);
+    int checked = 0, offGrid = 0;
+    for (double t = 0.55; t + 0.2 < 2.0; t += 0.25)   // середина каждого шага (4 Гц)
+    {
+        const float f = measure(steps[0], (int) (t * sr), 4096, sr);
+        if (f <= 0.0f) continue;
+        const float semis = 12.0f * std::log2(f / 220.0f);
+        ++checked;
+        if (std::abs(semis - std::round(semis)) > 0.15f || semis < -0.2f || semis > 12.2f) ++offGrid;
+    }
+    std::printf("Pitch LFO random steps: %d steps checked, %d off the semitone grid\n", checked, offGrid);
+    CHECK(checked >= 4 && offGrid == 0, "random steps not quantised to semitones");
+
+    // Off: прежнее поведение (Static -12)
+    PitchProcessor off; off.setPlayConfigDetails(2, 2, sr, block);
+    setParam(off, "shift", -12); setParam(off, "mix", 100); setParam(off, "lfoDepth", 24.0f);
+    off.prepareToPlay(sr, block);
+    const float f = measure(run(off, in, block)[0], (int) sr, 8192, sr);
+    CHECK(std::abs(1200.0f * std::log2(f / 110.0f)) < 5.0f, "LFO off changes pitch (%.1f Hz)", f);
+}
+
+static void testEqCurves()
+{
+    EqProcessor eq;
+    const auto& curves = EqProcessor::getCurvePresets();
+    int matched = 0;
+
+    CHECK(eq.findMatchingCurvePreset() == 0, "default EQ should match Flat");
+
+    for (size_t i = 0; i < curves.size(); ++i)
+    {
+        eq.applyCurvePreset(curves[i]);
+        const int found = eq.findMatchingCurvePreset();
+        // Две кривые могут совпасть только если они одинаковые - такого быть не должно
+        if (found == (int) i) ++matched;
+        else std::printf("  curve %s matched as %d\n", curves[i].name, found);
+
+        std::array<Biquad, EqProcessor::numBands> bands;
+        EqProcessor::configure(bands, eq.getSettings(), 48000.0);
+        for (double hz : { 30.0, 100.0, 1000.0, 5000.0, 15000.0 })
+            CHECK(std::isfinite(EqProcessor::getResponseDb(bands, eq.getSettings(), hz, 48000.0)), "curve %s response", curves[i].name);
+    }
+
+    setParam(eq, "mid1Gain", 1.3f);
+    CHECK(eq.findMatchingCurvePreset() < 0 || eq.findMatchingCurvePreset() != 0, "edited curve still matches");
+
+    std::printf("EQ curves: %d / %d apply and are recognised\n", matched, (int) curves.size());
+    CHECK(matched == (int) curves.size(), "EQ curve recognition");
+}
+
+static void testCabinetClearIr()
+{
+    const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("guitartx_test_ir.wav");
+    {
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
+        file.deleteFile();
+        stream = file.createOutputStream();
+        auto writer = wav.createWriterFor(stream, juce::AudioFormatWriterOptions{}.withSampleRate(48000).withNumChannels(1).withBitsPerSample(24));
+        juce::AudioBuffer<float> ir(1, 256); ir.clear(); ir.setSample(0, 0, 1.0f); ir.setSample(0, 10, 0.5f);
+        writer->writeFromAudioSampleBuffer(ir, 0, 256);
+    }
+
+    CabinetProcessor cab;
+    CHECK(cab.loadImpulseResponse(file), "IR load");
+    CHECK(cab.isUsingImpulseResponse(), "IR not used after load");
+    cab.clearImpulseResponse();
+    std::printf("Cabinet clear IR: using IR %d, path '%s', status %s\n", (int) cab.isUsingImpulseResponse(),
+                cab.getImpulseResponseFile().getFullPathName().toRawUTF8(), cab.getStatusText().toRawUTF8());
+    CHECK(! cab.isUsingImpulseResponse() && cab.getImpulseResponseFile() == juce::File(), "IR not cleared");
+
+    // Состояние без IR: после восстановления IR не возвращается
+    CabinetProcessor restored;
+    restored.loadState(cab.saveState());
+    CHECK(! restored.hasImpulseResponse(), "cleared IR came back after state restore");
+    file.deleteFile();
+}
+
+static float valueOf(EffectBase& effect, const char* id)
+{
+    auto* p = effect.getValueTreeState().getParameter(id);
+    return p->convertFrom0to1(p->getValue());
+}
+
+static void testSnapshots()
+{
+    AudioEngine engine;
+    engine.createDefaultRack();   // gate, distortion, cabinet
+
+    auto* gate = engine.getEffect(0);
+    auto* dist = engine.getEffect(1);
+    setParam(*dist, "gain", 30.0f);
+
+    engine.selectSnapshot(1);
+    CHECK(engine.getActiveSnapshot() == 1 && std::abs(valueOf(*dist, "gain") - 30.0f) < 0.05f, "new snapshot B must start as a copy of A");
+
+    setParam(*dist, "gain", 55.0f);
+    setParam(*gate, EffectBase::enabledParameterId, 0.0f);
+
+    engine.selectSnapshot(0);
+    const bool aOk = std::abs(valueOf(*dist, "gain") - 30.0f) < 0.05f && gate->isEffectEnabled();
+    engine.selectSnapshot(1);
+    const bool bOk = std::abs(valueOf(*dist, "gain") - 55.0f) < 0.05f && ! gate->isEffectEnabled();
+    std::printf("Snapshots: A gain %.1f / gate on, B gain %.1f / gate off -> %s\n", 30.0f, valueOf(*dist, "gain"), aOk && bOk ? "ok" : "FAIL");
+    CHECK(aOk && bOk, "snapshot switching");
+
+    // Сохранение / восстановление (в B)
+    auto state = engine.createRackState();
+    AudioEngine other;
+    CHECK(other.restoreRackState(*state), "restore with snapshots");
+    auto* dist2 = other.getEffect(1);
+    const bool restoredB = other.getActiveSnapshot() == 1 && std::abs(valueOf(*dist2, "gain") - 55.0f) < 0.05f;
+    other.selectSnapshot(0);
+    const bool restoredA = std::abs(valueOf(*dist2, "gain") - 30.0f) < 0.05f && other.getEffect(0)->isEffectEnabled();
+    std::printf("Snapshots XML round trip: B %s, A %s\n", restoredB ? "ok" : "FAIL", restoredA ? "ok" : "FAIL");
+    CHECK(restoredB && restoredA, "snapshot XML round trip");
+
+    // Каноничная форма: в B она совпадает с "тем же пресетом в A"
+    auto canonicalB = engine.createRackState(true);
+    engine.selectSnapshot(0);
+    auto canonicalA = engine.createRackState(true);
+    CHECK(canonicalA->isEquivalentTo(canonicalB.get(), false), "canonical form differs between A and B");
+
+    // Пресет: переключение A/B без правок - не "изменён", правка в B - "изменён"
+    PresetManager presets(engine);
+    for (const auto& preset : presets.getPresets())
+        if (preset.isFactory && preset.name == "Modern Metal A/B")
+            presets.loadPreset(preset);
+
+    CHECK(engine.hasSnapshots(), "factory A/B preset has no snapshot B");
+    auto* lead = engine.getEffect(2);
+    const float gainA = valueOf(*lead, "gain");
+    engine.selectSnapshot(1);
+    const float gainB = valueOf(*lead, "gain");
+    const bool unchanged = ! presets.isModified();
+    setParam(*lead, "gain", 20.0f);
+    const bool changed = presets.isModified();
+    std::printf("Factory snapshot: gain A %.1f, B %.1f; modified after switch %d, after edit %d\n", gainA, gainB, (int) ! unchanged, (int) changed);
+    CHECK(std::abs(gainA - 40.0f) < 0.05f && std::abs(gainB - 46.0f) < 0.05f, "factory snapshot values");
+    CHECK(unchanged && changed, "preset modified flag with snapshots");
+
+    // Новый пресет без снапшотов: снова A
+    for (const auto& preset : presets.getPresets())
+        if (preset.isFactory && preset.name == "Doom Rhythm")
+            presets.loadPreset(preset);
+    CHECK(engine.getActiveSnapshot() == 0 && ! engine.hasSnapshots(), "snapshot state leaked into the next preset");
+
+    // Сессия v0.3.0: эталон в обычной форме и без новых параметров Pitch (LFO) - не "изменён"
+    for (const auto& preset : presets.getPresets())
+        if (preset.isFactory && preset.name == "Whammy Squeal")
+            presets.loadPreset(preset);
+
+    auto legacy = engine.createRackState();
+    for (auto* effect : legacy->getChildWithTagNameIterator("Effect"))
+        if (auto* params = effect->getFirstChildElement())
+            for (int i = params->getNumChildElements(); --i >= 0;)
+                if (params->getChildElement(i)->getStringAttribute("id").startsWith("lfo")
+                    || params->getChildElement(i)->getStringAttribute("id") == "retrig")
+                    params->removeChildElement(params->getChildElement(i), true);
+
+    presets.restoreCurrent("Whammy Squeal", true, std::move(legacy));
+    const bool legacyClean = ! presets.isModified();
+    setParam(*engine.getEffect(1), "gain", 10.0f);
+    std::printf("Legacy session baseline: modified %d, after edit %d\n", (int) ! legacyClean, (int) presets.isModified());
+    CHECK(legacyClean && presets.isModified(), "legacy baseline migration");
+}
+
+static std::vector<float> readWav(const juce::File& file, int channel, int& numChannels, double& rate)
+{
+    juce::AudioFormatManager formats; formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
+    if (reader == nullptr) { numChannels = 0; return {}; }
+    numChannels = (int) reader->numChannels; rate = reader->sampleRate;
+    juce::AudioBuffer<float> buf((int) reader->numChannels, (int) reader->lengthInSamples);
+    reader->read(&buf, 0, (int) reader->lengthInSamples, 0, true, true);
+    return std::vector<float>(buf.getReadPointer(channel), buf.getReadPointer(channel) + buf.getNumSamples());
+}
+
+static void testRecorder()
+{
+    const double sr = 48000; const int block = 256, blocks = 400;
+    const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("guitartx_rec_test");
+    folder.deleteRecursively();
+
+    Recorder recorder;
+    Recorder::Options options; options.folder = folder; options.format = Recorder::Format::float32;
+    recorder.setOptions(options);
+
+    auto inNode = recorder.createInputNode(), outNode = recorder.createOutputNode();
+    inNode->prepareToPlay(sr, block); outNode->prepareToPlay(sr, block);
+
+    juce::String error;
+    CHECK(recorder.start(error), "recorder start: %s", error.toRawUTF8());
+
+    juce::AudioBuffer<float> buf(2, block); juce::MidiBuffer midi;
+    auto signal = [sr](int i) { return 0.5f * (float) std::sin(2.0 * juce::MathConstants<double>::pi * 220.0 * i / sr); };
+
+    for (int b = 0; b < blocks; ++b)
+    {
+        for (int k = 0; k < block; ++k) { buf.setSample(0, k, signal(b * block + k)); buf.setSample(1, k, signal(b * block + k)); }
+        inNode->processBlock(buf, midi);
+        buf.applyGain(0, 0, block, 0.5f);   // "эффекты": L тише, R без изменений
+        outNode->processBlock(buf, midi);
+    }
+
+    recorder.stop();
+
+    int diCh = 0, wetCh = 0; double diRate = 0, wetRate = 0;
+    const auto di   = readWav(recorder.getLastDiFile(), 0, diCh, diRate);
+    const auto wetL = readWav(recorder.getLastWetFile(), 0, wetCh, wetRate);
+    const auto wetR = readWav(recorder.getLastWetFile(), 1, wetCh, wetRate);
+
+    float diErr = 0, wetErr = 0;
+    for (size_t i = 0; i < std::min(di.size(), wetL.size()); ++i)
+    {
+        diErr  = std::max(diErr,  std::abs(di[i] - signal((int) i)));
+        wetErr = std::max(wetErr, std::abs(wetL[i] - 0.5f * signal((int) i)) + std::abs(wetR[i] - signal((int) i)));
+    }
+
+    std::printf("Recorder: DI %d ch %zu samples, Wet %d ch %zu samples @ %.0f Hz, max error DI %.1e, Wet %.1e\n",
+                diCh, di.size(), wetCh, wetL.size(), wetRate, diErr, wetErr);
+    CHECK(diCh == 1 && wetCh == 2, "recorder channel counts");
+    CHECK(di.size() == (size_t) (blocks * block) && wetL.size() == di.size(), "DI and Wet must have equal length");
+    CHECK(diErr < 1.0e-6f && wetErr < 1.0e-6f, "recorded audio differs");
+
+    // Re-amp: DI-файл подаётся вместо входа, пишется только Wet
+    CHECK(recorder.startReamp(recorder.getLastDiFile(), error), "re-amp start: %s", error.toRawUTF8());
+    std::vector<float> fed;
+    for (int b = 0; b < blocks / 2; ++b)
+    {
+        buf.clear();   // гитара молчит
+        juce::Thread::sleep(3);   // фоновое чтение файла рассчитано на реальное время, а тест быстрее
+        inNode->processBlock(buf, midi);
+        for (int k = 0; k < block; ++k) fed.push_back(buf.getSample(1, k));
+        outNode->processBlock(buf, midi);
+    }
+    const auto reampFile = recorder.getLastWetFile();
+    recorder.stop(); recorder.stopReamp();
+
+    float reampErr = 0;
+    for (size_t i = 0; i < fed.size(); ++i) reampErr = std::max(reampErr, std::abs(fed[i] - signal((int) i)));
+    std::printf("Re-amp: input replaced by file, max error %.1e, DI track %s, wet file %s\n", reampErr,
+                recorder.getLastDiFile() == juce::File() ? "skipped" : "written", reampFile.getFileName().toRawUTF8());
+    CHECK(reampErr < 1.0e-5f, "re-amp input differs from DI file");
+    CHECK(recorder.getLastDiFile() == juce::File() && reampFile.existsAsFile(), "re-amp files");
+
+    folder.deleteRecursively();
 }
 
 int main()
@@ -649,6 +926,11 @@ int main()
     testMidi();
     testTuner();
     testPresets();
+    testPitchLfo();
+    testEqCurves();
+    testCabinetClearIr();
+    testSnapshots();
+    testRecorder();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

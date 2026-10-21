@@ -113,6 +113,8 @@ MainComponent::MainComponent()
     addChildComponent(tuner);
 
     setupMidi();
+    setupRecorder();
+    setupSnapshots();
 
     lastSavedRack    = audioEngine.createRackState();
     lastSavedSession = createSessionState();
@@ -141,6 +143,11 @@ MainComponent::~MainComponent()
 {
     stopTimer();
     audioEngine.getDeviceManager().removeChangeListener(this);
+
+    // Дописать файлы, пока движок жив
+    audioEngine.getRecorder().onStoppedAutomatically = nullptr;
+    audioEngine.getRecorder().stopReamp();
+    audioEngine.getRecorder().stop();
 
     saveStateIfChanged();
     saveDeviceState();
@@ -273,6 +280,8 @@ void MainComponent::showPanelFor(EffectBase* effect)
     panelViewport.setVisible(panel != nullptr);
 
     updateMasterButton();
+    updateRecordButton();
+    updateSnapshotButtons();
     resized();
 }
 
@@ -351,6 +360,12 @@ void MainComponent::setupMidi()
 
     midi.onPresetStep    = [this](int direction) { presetBar.step(direction); };
     midi.onToggleTuner   = [this] { setTunerVisible(! tuner.isActive()); };
+    midi.onToggleRecord  = [this] { toggleRecording(); };
+    midi.onToggleSnapshot = [this]
+    {
+        selectSnapshot(1 - audioEngine.getActiveSnapshot());
+        showTransientStatus(juce::String("MIDI: snapshot ") + (audioEngine.getActiveSnapshot() == 0 ? "A" : "B"), 2.0);
+    };
     midi.onLearned       = [this](const MidiController::Mapping& m) { showTransientStatus("MIDI learned: " + midi.describe(m)); };
     midi.onMappingsChanged = [this]
     {
@@ -365,6 +380,270 @@ void MainComponent::setupMidi()
     midiButton.setTooltip("MIDI: pedals, footswitches, program change");
     midiButton.onClick = [this] { showMidiWindow(); };
     addAndMakeVisible(midiButton);
+}
+
+//==============================================================================
+// Рекордер
+void MainComponent::setupRecorder()
+{
+    auto& recorder = audioEngine.getRecorder();
+
+    if (auto saved = settings.loadXml("recorder"))
+        recorder.restoreFromXml(*saved);
+
+    recorder.onStoppedAutomatically = [this](const juce::String& message) { showTransientStatus(message, 8.0); };
+
+    recordButton.setTooltip("Record DI + processed sound to WAV (re-amp ready)");
+    recordButton.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(200, 40, 40));
+    recordButton.onClick = [this] { toggleRecording(); };
+    addAndMakeVisible(recordButton);
+
+    recordMenuButton.setButtonText(juce::String::fromUTF8("\xe2\x96\xbe"));
+    recordMenuButton.setTooltip("Recorder options, re-amp, recordings folder");
+    recordMenuButton.onClick = [this] { showRecorderMenu(); };
+    addAndMakeVisible(recordMenuButton);
+
+    updateRecordButton();
+}
+
+void MainComponent::saveRecorderSettings()
+{
+    settings.saveXml("recorder", audioEngine.getRecorder().createXml().get());
+}
+
+void MainComponent::toggleRecording()
+{
+    auto& recorder = audioEngine.getRecorder();
+
+    if (recorder.isReamping())
+    {
+        recorder.stop();
+        recorder.stopReamp();
+        showTransientStatus("Re-amp stopped: " + recorder.getLastWetFile().getFileName(), 6.0);
+    }
+    else if (recorder.isRecording())
+    {
+        recorder.stop();
+
+        juce::StringArray files;
+
+        for (const auto& file : { recorder.getLastDiFile(), recorder.getLastWetFile() })
+            if (file != juce::File())
+                files.add(file.getFileName());
+
+        showTransientStatus("Saved: " + files.joinIntoString("  +  "), 8.0);
+    }
+    else
+    {
+        juce::String error;
+
+        if (recorder.start(error))
+            showTransientStatus("Recording to " + recorder.getFolder().getFullPathName(), 3.0);
+        else
+            showTransientStatus("Recording failed: " + error, 8.0);
+    }
+
+    updateRecordButton();
+}
+
+void MainComponent::showRecorderMenu()
+{
+    auto& recorder = audioEngine.getRecorder();
+    const auto options = recorder.getOptions();
+    const bool busy = recorder.isRecording();
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader("Recorder");
+    menu.addItem(1, "Open recordings folder");
+
+    if (recorder.isReamping())
+        menu.addItem(2, "Stop re-amp (" + recorder.getReampName() + ")");
+    else
+        menu.addItem(3, "Re-amp a DI file...", ! busy);
+
+    menu.addSeparator();
+    menu.addItem(10, "Record DI (dry input, mono)",       ! busy && options.recordWet, options.recordDi);
+    menu.addItem(11, "Record Wet (processed, stereo)",    ! busy && options.recordDi,  options.recordWet);
+    menu.addSeparator();
+    menu.addItem(20, "WAV 24-bit",          ! busy, options.format == Recorder::Format::pcm24);
+    menu.addItem(21, "WAV 32-bit float",    ! busy, options.format == Recorder::Format::float32);
+    menu.addSeparator();
+    menu.addItem(30, "Change folder...", ! busy);
+
+    if (options.folder != juce::File())
+        menu.addItem(31, "Use default folder", ! busy);
+
+    juce::Component::SafePointer<MainComponent> safeThis(this);
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&recordMenuButton),
+                       [safeThis](int result)
+                       {
+                           if (safeThis == nullptr || result == 0)
+                               return;
+
+                           auto& self = *safeThis;
+                           auto& rec  = self.audioEngine.getRecorder();
+                           auto  opts = rec.getOptions();
+
+                           switch (result)
+                           {
+                               case 1:
+                                   rec.getFolder().createDirectory();
+                                   rec.getFolder().startAsProcess();
+                                   return;
+
+                               case 2:  self.toggleRecording();  return;
+                               case 3:  self.chooseReampFile();  return;
+                               case 10: opts.recordDi  = ! opts.recordDi;  break;
+                               case 11: opts.recordWet = ! opts.recordWet; break;
+                               case 20: opts.format = Recorder::Format::pcm24;   break;
+                               case 21: opts.format = Recorder::Format::float32; break;
+                               case 31: opts.folder = juce::File(); break;
+
+                               case 30:
+                               {
+                                   self.reampChooser = std::make_unique<juce::FileChooser>("Recordings folder", rec.getFolder());
+
+                                   self.reampChooser->launchAsync(juce::FileBrowserComponent::openMode
+                                                                      | juce::FileBrowserComponent::canSelectDirectories,
+                                                                  [safeThis](const juce::FileChooser& chooser)
+                                                                  {
+                                                                      const auto folder = chooser.getResult();
+
+                                                                      if (safeThis == nullptr || ! folder.isDirectory())
+                                                                          return;
+
+                                                                      auto& r = safeThis->audioEngine.getRecorder();
+                                                                      auto o  = r.getOptions();
+                                                                      o.folder = folder;
+                                                                      r.setOptions(o);
+                                                                      safeThis->saveRecorderSettings();
+                                                                  });
+                                   return;
+                               }
+
+                               default: return;
+                           }
+
+                           rec.setOptions(opts);
+                           self.saveRecorderSettings();
+                       });
+}
+
+void MainComponent::chooseReampFile()
+{
+    auto& recorder = audioEngine.getRecorder();
+
+    reampChooser = std::make_unique<juce::FileChooser>("DI file to re-amp", recorder.getFolder(), "*.wav;*.aif;*.aiff;*.flac");
+
+    juce::Component::SafePointer<MainComponent> safeThis(this);
+
+    reampChooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [safeThis](const juce::FileChooser& chooser)
+                              {
+                                  const auto file = chooser.getResult();
+
+                                  if (safeThis == nullptr || ! file.existsAsFile())
+                                      return;
+
+                                  juce::String error;
+
+                                  if (safeThis->audioEngine.getRecorder().startReamp(file, error))
+                                      safeThis->showTransientStatus("Re-amp: " + file.getFileName()
+                                                                    + "  (guitar input muted until it ends)", 6.0);
+                                  else
+                                      safeThis->showTransientStatus("Re-amp failed: " + error, 8.0);
+
+                                  safeThis->updateRecordButton();
+                              });
+}
+
+void MainComponent::updateRecordButton()
+{
+    auto& recorder = audioEngine.getRecorder();
+    juce::String text = "REC";
+
+    if (recorder.isReamping())
+    {
+        text = "RE-AMP " + juce::String(juce::roundToInt(recorder.getReampProgress() * 100.0)) + "%";
+    }
+    else if (recorder.isRecording())
+    {
+        const int seconds = (int) recorder.getRecordedSeconds();
+        text = juce::String::fromUTF8("\xe2\x97\x8f ") + juce::String(seconds / 60).paddedLeft('0', 2)
+             + ":" + juce::String(seconds % 60).paddedLeft('0', 2);
+    }
+
+    recordButton.setToggleState(recorder.isRecording() || recorder.isReamping(), juce::dontSendNotification);
+
+    if (recordButton.getButtonText() != text)
+        recordButton.setButtonText(text);
+}
+
+//==============================================================================
+// Snapshots A/B
+void MainComponent::setupSnapshots()
+{
+    for (int i = 0; i < 2; ++i)
+    {
+        auto& button = snapshotButtons[(size_t) i];
+        button.setButtonText(i == 0 ? "A" : "B");
+        button.setTooltip("Snapshot " + button.getButtonText()
+                          + ": another set of knob values and On/Off for the same chain. Right-click: copy");
+        button.setColour(juce::TextButton::buttonOnColourId, GuitarTXLookAndFeel::accent.darker(0.2f));
+        button.onClick      = [this, i] { selectSnapshot(i); };
+        button.onRightClick = [this, i] { showSnapshotMenu(i); };
+        addAndMakeVisible(button);
+    }
+
+    updateSnapshotButtons();
+}
+
+void MainComponent::selectSnapshot(int index)
+{
+    audioEngine.selectSnapshot(index);
+    updateSnapshotButtons();
+}
+
+void MainComponent::showSnapshotMenu(int index)
+{
+    const int active = audioEngine.getActiveSnapshot();
+    const auto activeName = juce::String(active == 0 ? "A" : "B");
+    const auto otherName  = juce::String(active == 0 ? "B" : "A");
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader("Snapshots");
+    menu.addItem(1, "Copy " + activeName + " to " + otherName);
+
+    if (index != active)
+        menu.addItem(2, "Switch to " + otherName);
+
+    juce::Component::SafePointer<MainComponent> safeThis(this);
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&snapshotButtons[(size_t) index]),
+                       [safeThis, activeName, otherName](int result)
+                       {
+                           if (safeThis == nullptr)
+                               return;
+
+                           if (result == 1)
+                           {
+                               safeThis->audioEngine.copySnapshotToOther();
+                               safeThis->showTransientStatus("Snapshot " + activeName + " copied to " + otherName, 3.0);
+                           }
+                           else if (result == 2)
+                           {
+                               safeThis->selectSnapshot(1 - safeThis->audioEngine.getActiveSnapshot());
+                           }
+                       });
+}
+
+void MainComponent::updateSnapshotButtons()
+{
+    const int active = audioEngine.getActiveSnapshot();
+
+    for (int i = 0; i < 2; ++i)
+        snapshotButtons[(size_t) i].setToggleState(i == active, juce::dontSendNotification);
 }
 
 void MainComponent::saveMidiSettings()
@@ -690,12 +969,21 @@ void MainComponent::resized()
     tunerButton.setBounds(header.removeFromRight(90).reduced(0, 8));
     header.removeFromRight(8);
     midiButton.setBounds(header.removeFromRight(70).reduced(0, 8));
+    header.removeFromRight(8);
+    recordMenuButton.setBounds(header.removeFromRight(24).reduced(0, 8));
+    header.removeFromRight(2);
+    recordButton.setBounds(header.removeFromRight(104).reduced(0, 8));
     titleLabel.setBounds(header);
 
     // Тюнер закрывает всё ниже заголовка
     tuner.setBounds(area);
 
-    presetBar.setBounds(area.removeFromTop(28));
+    auto presetRow = area.removeFromTop(28);
+    snapshotButtons[1].setBounds(presetRow.removeFromRight(34));
+    presetRow.removeFromRight(4);
+    snapshotButtons[0].setBounds(presetRow.removeFromRight(34));
+    presetRow.removeFromRight(12);
+    presetBar.setBounds(presetRow);
     area.removeFromTop(8);
 
     area.removeFromTop(4);

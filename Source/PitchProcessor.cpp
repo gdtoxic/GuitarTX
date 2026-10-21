@@ -33,7 +33,11 @@ PitchProcessor::PitchProcessor()
       sensitivityDb  (getParameterValue("sens")),
       mixPercent     (getParameterValue("mix")),
       toneHz         (getParameterValue("tone")),
-      levelDb        (getParameterValue("level"))
+      levelDb        (getParameterValue("level")),
+      lfoChoice      (getParameterValue("lfo")),
+      lfoRateHz      (getParameterValue("lfoRate")),
+      lfoDepthSemitones(getParameterValue("lfoDepth")),
+      lfoRetrigger   (getParameterValue("retrig"))
 {
 }
 
@@ -49,6 +53,12 @@ EffectBase::Layout PitchProcessor::createLayout()
     layout.add(makeFloatParameter("mix",      "Mix",        0.0f,   100.0f,  1.0f,   100.0f, "%",  0));
     layout.add(makeFloatParameter("tone",     "Tone",     500.0f, 12000.0f, 10.0f,  6000.0f, "Hz", 0, 3000.0f));
     layout.add(makeFloatParameter("level",    "Level",    -24.0f,    12.0f,  0.1f,     0.0f, "dB", 1));
+
+    layout.add(makeChoiceParameter("lfo",     "LFO",
+                                   { "Off", "Sine", "Triangle", "Square", "Saw Up", "Saw Down", "Random", "Random Steps" }, 0));
+    layout.add(makeFloatParameter("lfoRate",  "LFO Rate",   0.05f,   20.0f,  0.01f,    2.0f, "Hz", 2, 2.0f));
+    layout.add(makeFloatParameter("lfoDepth", "LFO Depth", -24.0f,   24.0f,  0.1f,   -12.0f, "st", 1));
+    layout.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "retrig", 1 }, "Retrig", false));
 
     return layout;
 }
@@ -96,20 +106,20 @@ void PitchProcessor::resetEffect()
     glideProgress = 1.0f;
     noteActive    = false;
 
+    lfoPhase  = 0.0f;
+    lfoRandom = random.nextFloat();
+
     mixSmoothed.setCurrentAndTargetValue(mixPercent.load() * 0.01f);
     levelSmoothed.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(levelDb.load()));
 }
 
 //==============================================================================
-float PitchProcessor::updateEnvelope(float input, Mode mode, float targetShift)
+float PitchProcessor::updateEnvelope(float input, Mode mode, float targetShift, bool& attacked)
 {
     const float level = std::abs(input);
 
     fastEnvelope += (level > fastEnvelope ? fastAttack : fastRelease) * (level - fastEnvelope);
     slowEnvelope += (level > slowEnvelope ? slowAttack : slowRelease) * (level - slowEnvelope);
-
-    if (mode == Mode::staticShift)
-        return targetShift;
 
     const float threshold = juce::Decibels::decibelsToGain(sensitivityDb.load());
     const float silence   = juce::Decibels::decibelsToGain(sensitivityDb.load() - releaseBelowDb);
@@ -126,11 +136,15 @@ float PitchProcessor::updateEnvelope(float input, Mode mode, float targetShift)
         glideProgress      = 0.0f;
         noteActive         = true;
         samplesSinceAttack = 0;
+        attacked           = true;
     }
     else if (noteActive && fastEnvelope < silence)
     {
         noteActive = false;
     }
+
+    if (mode == Mode::staticShift)
+        return targetShift;
 
     if (glideProgress < 1.0f)
         glideProgress = juce::jmin(1.0f, glideProgress + 1.0f / (timeMs.load() * 0.001f * (float) sampleRate));
@@ -148,6 +162,34 @@ float PitchProcessor::updateEnvelope(float input, Mode mode, float targetShift)
 }
 
 //==============================================================================
+float PitchProcessor::advanceLfo(LfoShape shape, float deltaPhase)
+{
+    lfoPhase += deltaPhase;
+
+    if (lfoPhase >= 1.0f)
+    {
+        lfoPhase -= std::floor(lfoPhase);
+        lfoRandom = random.nextFloat();   // новый цикл - новая случайная высота
+    }
+
+    const float p = lfoPhase;
+
+    // Все формы стартуют с 0 (исходная высота), кроме Saw Down - он начинает с полного размаха
+    switch (shape)
+    {
+        case LfoShape::sine:        return 0.5f - 0.5f * std::cos(juce::MathConstants<float>::twoPi * p);
+        case LfoShape::triangle:    return p < 0.5f ? 2.0f * p : 2.0f - 2.0f * p;
+        case LfoShape::square:      return p < 0.5f ? 0.0f : 1.0f;
+        case LfoShape::sawUp:       return p;
+        case LfoShape::sawDown:     return 1.0f - p;
+        case LfoShape::random:
+        case LfoShape::randomSteps: return lfoRandom;
+        case LfoShape::off:
+        default:                    return 0.0f;
+    }
+}
+
+//==============================================================================
 void PitchProcessor::processEffect(juce::AudioBuffer<float>& buffer)
 {
     const int numChannels = juce::jmin(maxChannels, buffer.getNumChannels());
@@ -158,6 +200,11 @@ void PitchProcessor::processEffect(juce::AudioBuffer<float>& buffer)
 
     const auto  mode        = (Mode) juce::roundToInt(modeChoice.load());
     const float targetShift = shiftSemitones.load() * positionPercent.load() * 0.01f;
+
+    const auto  lfoShape  = (LfoShape) juce::jlimit(0, 7, juce::roundToInt(lfoChoice.load()));
+    const float lfoDepth  = lfoDepthSemitones.load();
+    const float lfoStep   = lfoRateHz.load() / (float) sampleRate;   // циклов на сэмпл
+    const bool  retrigger = lfoRetrigger.load() > 0.5f;
 
     const float tone = toneHz.load();
 
@@ -179,12 +226,29 @@ void PitchProcessor::processEffect(juce::AudioBuffer<float>& buffer)
         const int count = juce::jmin(chunkSize, numSamples - start);
 
         float shift = 0.0f;
+        bool  attacked = false;
 
         for (int i = 0; i < count; ++i)
         {
             const float mono = numChannels > 1 ? 0.5f * (data[0][start + i] + data[1][start + i])
                                                : data[0][start + i];
-            shift = updateEnvelope(mono, mode, targetShift);
+            shift = updateEnvelope(mono, mode, targetShift, attacked);
+        }
+
+        if (lfoShape != LfoShape::off)
+        {
+            if (attacked && retrigger)
+            {
+                lfoPhase  = 0.0f;
+                lfoRandom = random.nextFloat();
+            }
+
+            float offset = lfoDepth * advanceLfo(lfoShape, lfoStep * (float) count);
+
+            if (lfoShape == LfoShape::randomSteps)
+                offset = std::round(offset);
+
+            shift = juce::jlimit(-24.0f, 24.0f, shift + offset);
         }
 
         shifter.setSemitones(shift);
