@@ -1027,10 +1027,129 @@ namespace
     }
 }
 
-//==============================================================================
-PresetManager::PresetManager(AudioEngine& engineToUse)
-    : engine(engineToUse)
+
+namespace
 {
+    // Состав цепочки для вычисления тегов (и для factory, и для user-пресетов)
+    struct EffectInfo
+    {
+        juce::String type;
+        bool enabled = true;
+        std::map<juce::String, float> params;   // в единицах параметра
+
+        float get(const char* id, float fallback) const
+        {
+            const auto it = params.find(id);
+            return it != params.end() ? it->second : fallback;
+        }
+    };
+
+    juce::StringArray deriveTags(const std::vector<EffectInfo>& chain, const juce::String& name, bool hasSnapshots)
+    {
+        auto find = [&chain](const char* type) -> const EffectInfo*
+        {
+            for (const auto& e : chain)
+                if (e.type == type)
+                    return &e;
+            return nullptr;
+        };
+
+        // Значения по умолчанию - как у самих эффектов (Distortion gain 38 dB, Overdrive drive 12 dB)
+        const auto* distortion = find(DistortionProcessor::typeId);
+        const auto* overdrive  = find(OverdriveProcessor::typeId);
+        const float gain  = distortion != nullptr && distortion->enabled ? distortion->get("gain", 38.0f) : -1.0f;
+        const float drive = overdrive  != nullptr && overdrive->enabled  ? overdrive->get("drive", 12.0f) : -1.0f;
+
+        const bool clean  = gain < 0.0f && drive < 15.0f;
+        const bool crunch = ! clean && gain <= 30.0f;
+
+        juce::StringArray tags;
+        tags.add(clean ? "clean" : crunch ? "crunch" : "high-gain");
+
+        bool lead = false;
+        for (const char* word : { "lead", "solo", "scream", "squeal", "siren" })
+            lead = lead || name.containsIgnoreCase(word);
+
+        if (lead)        tags.add("lead");
+        else if (! clean) tags.add("rhythm");
+
+        if (find(PitchProcessor::typeId) != nullptr)  tags.add("pitch");
+        if (find(SubProcessor::typeId) != nullptr)    tags.add("sub");
+        if (find(ChaosProcessor::typeId) != nullptr)  tags.add("chaos");
+        if (find(DelayProcessor::typeId) != nullptr)  tags.add("delay");
+        if (find(ReverbProcessor::typeId) != nullptr) tags.add("reverb");
+
+        const auto* reverb = find(ReverbProcessor::typeId);
+        const auto* delay  = find(DelayProcessor::typeId);
+        const bool ambient = (reverb != nullptr && reverb->enabled
+                              && (reverb->get("decay", 2.0f) >= 4.0f || reverb->get("mix", 25.0f) >= 30.0f))
+                          || (delay != nullptr && delay->enabled && delay->get("feedback", 35.0f) >= 60.0f);
+        if (ambient)
+            tags.add("ambient");
+
+        if (hasSnapshots)
+            tags.add("A/B");
+
+        return tags;
+    }
+
+    std::vector<EffectInfo> describeFactory(const FactoryPreset& preset)
+    {
+        std::vector<EffectInfo> chain;
+
+        for (const auto& spec : preset.chain)
+        {
+            EffectInfo info;
+            info.type = spec.typeId;
+
+            for (const auto& [id, value] : spec.parameters)
+                info.params[id] = value;
+
+            info.enabled = info.get(EffectBase::enabledParameterId, 1.0f) > 0.5f;
+            chain.push_back(std::move(info));
+        }
+
+        return chain;
+    }
+
+    bool hasFactorySnapshots(const FactoryPreset& preset)
+    {
+        for (const auto& spec : preset.chain)
+            if (! spec.snapshotB.empty())
+                return true;
+        return false;
+    }
+
+    juce::StringArray parseTagList(const juce::String& text)
+    {
+        juce::StringArray tags;
+        tags.addTokens(text, ",;", "\"");
+        tags.trim();
+        tags.removeEmptyStrings();
+        tags.removeDuplicates(true);
+        return tags;
+    }
+
+    const juce::Identifier tagsAttr       { "tags" };
+    const juce::Identifier favouritesTag  { "GuitarTXFavourites" };
+    constexpr const char*  favouritesFile = "favourites.xml";
+}
+
+//==============================================================================
+juce::String PresetManager::Preset::getKey() const
+{
+    if (isFactory)
+        return "factory:" + name;
+
+    return "user:" + (folder.isEmpty() ? name : folder + "/" + name);
+}
+
+//==============================================================================
+PresetManager::PresetManager(AudioEngine& engineToUse, juce::File userDirectoryToUse)
+    : engine(engineToUse),
+      userDirectory(userDirectoryToUse == juce::File() ? getPresetDirectory() : userDirectoryToUse)
+{
+    loadFavourites();
 }
 
 juce::File PresetManager::getPresetDirectory()
@@ -1045,31 +1164,309 @@ juce::String PresetManager::sanitiseName(const juce::String& name)
     return juce::File::createLegalFileName(name.trim()).substring(0, 64).trim();
 }
 
+juce::String PresetManager::folderOf(const juce::File& file) const
+{
+    const auto parent = file.getParentDirectory();
+
+    if (parent == userDirectory || ! parent.isAChildOf(userDirectory))
+        return {};
+
+    return parent.getRelativePathFrom(userDirectory).replaceCharacter('\\', '/');
+}
+
+juce::File PresetManager::folderDirectory(const juce::String& folder) const
+{
+    // Только вложенные папки: ".." и абсолютные пути отбрасываются
+    juce::StringArray parts;
+    parts.addTokens(folder.replaceCharacter('\\', '/'), "/", {});
+
+    auto directory = userDirectory;
+
+    for (const auto& part : parts)
+    {
+        const auto clean = sanitiseName(part);
+
+        if (clean.isNotEmpty() && clean != "." && clean != "..")
+            directory = directory.getChildFile(clean);
+    }
+
+    return directory;
+}
+
 //==============================================================================
+const PresetManager::UserInfo& PresetManager::getUserInfo(const juce::File& file) const
+{
+    auto& info = userInfoCache[file.getFullPathName()];
+    const auto modified = file.getLastModificationTime();
+
+    if (info.modified == modified && modified != juce::Time())
+        return info;
+
+    info = {};
+    info.modified = modified;
+
+    if (auto xml = juce::XmlDocument::parse(file))
+    {
+        std::vector<EffectInfo> chain;
+
+        for (auto* effect : xml->getChildWithTagNameIterator("Effect"))
+        {
+            EffectInfo e;
+            e.type = effect->getStringAttribute("type");
+
+            if (auto* params = effect->getFirstChildElement())
+            {
+                // Нет value - параметр ни разу не менялся и стоит по умолчанию
+                for (auto* param : params->getChildWithTagNameIterator("PARAM"))
+                    if (param->hasAttribute("value"))
+                        e.params[param->getStringAttribute("id")] = (float) param->getDoubleAttribute("value");
+
+                info.hasSnapshots = info.hasSnapshots || params->getChildByName("SNAPSHOT") != nullptr;
+            }
+
+            e.enabled = e.get(EffectBase::enabledParameterId, 1.0f) > 0.5f;
+            chain.push_back(std::move(e));
+        }
+
+        info.userTags = parseTagList(xml->getStringAttribute(tagsAttr));
+        info.tags     = deriveTags(chain, file.getFileNameWithoutExtension(), info.hasSnapshots);
+
+        for (const auto& tag : info.userTags)
+            info.tags.addIfNotAlreadyThere(tag, true);
+    }
+
+    return info;
+}
+
 std::vector<PresetManager::Preset> PresetManager::getPresets() const
 {
     std::vector<Preset> result;
 
     for (const auto& factory : getFactoryPresets())
-        result.push_back({ factory.name, true, {}, factory.category });
-
-    auto files = getPresetDirectory().findChildFiles(juce::File::findFiles, false,
-                                                     juce::String("*") + fileExtension);
-
-    std::sort(files.begin(), files.end(), [](const juce::File& a, const juce::File& b)
     {
+        Preset preset;
+        preset.name         = factory.name;
+        preset.isFactory    = true;
+        preset.category     = factory.category;
+        preset.hasSnapshots = hasFactorySnapshots(factory);
+        preset.tags         = deriveTags(describeFactory(factory), preset.name, preset.hasSnapshots);
+        result.push_back(std::move(preset));
+    }
+
+    auto files = userDirectory.findChildFiles(juce::File::findFiles, true, juce::String("*") + fileExtension);
+
+    // Корень, затем подпапки; внутри - по алфавиту
+    std::sort(files.begin(), files.end(), [this](const juce::File& a, const juce::File& b)
+    {
+        const auto folderA = folderOf(a), folderB = folderOf(b);
+
+        if (folderA != folderB)
+            return folderA.isEmpty() || (! folderB.isEmpty() && folderA.compareNatural(folderB) < 0);
+
         return a.getFileNameWithoutExtension().compareNatural(b.getFileNameWithoutExtension()) < 0;
     });
 
     for (const auto& file : files)
-        result.push_back({ file.getFileNameWithoutExtension(), false, file, {} });
+    {
+        const auto& info = getUserInfo(file);
+
+        Preset preset;
+        preset.name         = file.getFileNameWithoutExtension();
+        preset.file         = file;
+        preset.folder       = folderOf(file);
+        preset.tags         = info.tags;
+        preset.userTags     = info.userTags;
+        preset.hasSnapshots = info.hasSnapshots;
+        result.push_back(std::move(preset));
+    }
 
     return result;
 }
 
-bool PresetManager::userPresetExists(const juce::String& name) const
+juce::StringArray PresetManager::getUserFolders() const
 {
-    return getPresetDirectory().getChildFile(sanitiseName(name) + fileExtension).existsAsFile();
+    juce::StringArray folders;
+
+    for (const auto& directory : userDirectory.findChildFiles(juce::File::findDirectories, true))
+        folders.add(directory.getRelativePathFrom(userDirectory).replaceCharacter('\\', '/'));
+
+    folders.sortNatural();
+    return folders;
+}
+
+bool PresetManager::userPresetExists(const juce::String& name, const juce::String& folder) const
+{
+    return folderDirectory(folder).getChildFile(sanitiseName(name) + fileExtension).existsAsFile();
+}
+
+bool PresetManager::matchesSearch(const Preset& preset, const juce::String& query)
+{
+    juce::StringArray words;
+    words.addTokens(query, " ,", "\"");
+    words.removeEmptyStrings();
+
+    for (const auto& word : words)
+    {
+        bool found = preset.name.containsIgnoreCase(word)
+                  || preset.category.containsIgnoreCase(word)
+                  || preset.folder.containsIgnoreCase(word);
+
+        for (const auto& tag : preset.tags)
+            found = found || tag.containsIgnoreCase(word);
+
+        if (! found)
+            return false;
+    }
+
+    return true;
+}
+
+//==============================================================================
+// Избранное
+void PresetManager::loadFavourites()
+{
+    favourites.clear();
+
+    if (auto xml = juce::XmlDocument::parse(userDirectory.getChildFile(favouritesFile)))
+        if (xml->hasTagName(favouritesTag))
+            for (auto* child : xml->getChildWithTagNameIterator("Preset"))
+                favourites.addIfNotAlreadyThere(child->getStringAttribute("key"));
+}
+
+void PresetManager::saveFavourites() const
+{
+    juce::XmlElement xml(favouritesTag);
+
+    for (const auto& key : favourites)
+        xml.createNewChildElement("Preset")->setAttribute("key", key);
+
+    if (userDirectory.createDirectory())
+        xml.writeTo(userDirectory.getChildFile(favouritesFile));
+}
+
+bool PresetManager::isFavourite(const Preset& preset) const
+{
+    return favourites.contains(preset.getKey());
+}
+
+void PresetManager::setFavourite(const Preset& preset, bool shouldBeFavourite)
+{
+    if (shouldBeFavourite) favourites.addIfNotAlreadyThere(preset.getKey());
+    else                   favourites.removeString(preset.getKey());
+
+    saveFavourites();
+}
+
+//==============================================================================
+// Теги, папки, импорт / экспорт
+bool PresetManager::setUserTags(const Preset& preset, const juce::StringArray& tags)
+{
+    if (preset.isFactory)
+        return false;
+
+    auto xml = juce::XmlDocument::parse(preset.file);
+
+    if (xml == nullptr)
+        return false;
+
+    juce::StringArray clean;
+    for (const auto& tag : tags)
+        clean.addArray(parseTagList(tag));
+    clean.removeDuplicates(true);
+
+    if (clean.isEmpty()) xml->removeAttribute(tagsAttr);
+    else                 xml->setAttribute(tagsAttr, clean.joinIntoString(", "));
+
+    userInfoCache.erase(preset.file.getFullPathName());
+    return xml->writeTo(preset.file);
+}
+
+bool PresetManager::createFolder(const juce::String& folder)
+{
+    const auto directory = folderDirectory(folder);
+    return directory != userDirectory && directory.createDirectory();
+}
+
+bool PresetManager::moveToFolder(const Preset& preset, const juce::String& folder)
+{
+    if (preset.isFactory || ! preset.file.existsAsFile())
+        return false;
+
+    const auto directory = folderDirectory(folder);
+    const auto target    = directory.getChildFile(preset.file.getFileName());
+
+    if (target == preset.file)
+        return true;
+
+    if (target.exists() || ! directory.createDirectory() || ! preset.file.moveFileTo(target))
+        return false;
+
+    const bool favourite = isFavourite(preset);
+    favourites.removeString(preset.getKey());
+
+    Preset moved = preset;
+    moved.file   = target;
+    moved.folder = folderOf(target);
+
+    if (favourite)
+        favourites.add(moved.getKey());
+
+    saveFavourites();
+
+    if (! currentIsFactory && currentFile == preset.file)
+        currentFile = target;
+
+    userInfoCache.erase(preset.file.getFullPathName());
+    return true;
+}
+
+PresetManager::ImportResult PresetManager::importPresets(const juce::Array<juce::File>& files)
+{
+    ImportResult result;
+
+    for (const auto& file : files)
+    {
+        auto xml = juce::XmlDocument::parse(file);
+
+        if (xml == nullptr || ! xml->hasTagName("GuitarTXRack"))
+        {
+            result.skipped.add(file.getFileName());
+            continue;
+        }
+
+        auto base = sanitiseName(xml->getStringAttribute(presetNameAttr, file.getFileNameWithoutExtension()));
+
+        if (base.isEmpty())
+            base = "Imported";
+
+        // Совпадающее имя: "Name 2", "Name 3", ...
+        auto name = base;
+        for (int n = 2; userPresetExists(name); ++n)
+            name = base + " " + juce::String(n);
+
+        xml->setAttribute(presetNameAttr, name);
+
+        if (userDirectory.createDirectory() && xml->writeTo(userDirectory.getChildFile(name + fileExtension)))
+            result.imported.add(name);
+        else
+            result.skipped.add(file.getFileName());
+    }
+
+    return result;
+}
+
+bool PresetManager::exportPreset(const Preset& preset, const juce::File& destination) const
+{
+    auto xml = loadPresetXml(preset);
+
+    if (xml == nullptr)
+        return false;
+
+    xml->setAttribute(presetNameAttr, preset.name);
+
+    const auto target = destination.hasFileExtension(fileExtension) ? destination
+                                                                    : destination.withFileExtension(fileExtension);
+    return xml->writeTo(target);
 }
 
 //==============================================================================
@@ -1188,7 +1585,7 @@ bool PresetManager::loadPreset(const Preset& preset)
         return false;
 
     applyFallbackImpulse(currentImpulse);
-    setCurrent(preset.name, preset.isFactory);
+    setCurrent(preset.name, preset.isFactory, preset.file);
 
     return true;
 }
@@ -1203,7 +1600,7 @@ bool PresetManager::loadNext(int direction)
     int index = -1;
 
     for (size_t i = 0; i < presets.size(); ++i)
-        if (presets[i].name == currentName && presets[i].isFactory == currentIsFactory)
+        if (isCurrent(presets[i]))
             index = (int) i;
 
     const int count = (int) presets.size();
@@ -1214,26 +1611,43 @@ bool PresetManager::loadNext(int direction)
 }
 
 //==============================================================================
-bool PresetManager::saveUserPreset(const juce::String& name)
+bool PresetManager::saveUserPreset(const juce::String& name, const juce::String& folder)
 {
     const auto cleanName = sanitiseName(name);
 
     if (cleanName.isEmpty())
         return false;
 
-    const auto directory = getPresetDirectory();
+    const auto directory = folderDirectory(folder);
 
     if (! directory.createDirectory())
         return false;
 
+    const auto file = directory.getChildFile(cleanName + fileExtension);
+
     auto xml = engine.createRackState();
     xml->setAttribute(presetNameAttr, cleanName);
 
-    if (! xml->writeTo(directory.getChildFile(cleanName + fileExtension)))
+    // Перезапись: свои теги остаются
+    if (file.existsAsFile())
+        if (auto previous = juce::XmlDocument::parse(file))
+            if (previous->hasAttribute(tagsAttr))
+                xml->setAttribute(tagsAttr, previous->getStringAttribute(tagsAttr));
+
+    if (! xml->writeTo(file))
         return false;
 
-    setCurrent(cleanName, false);
+    userInfoCache.erase(file.getFullPathName());
+    setCurrent(cleanName, false, file);
     return true;
+}
+
+bool PresetManager::saveCurrentUserPreset()
+{
+    if (currentIsFactory || currentName.isEmpty())
+        return false;
+
+    return saveUserPreset(currentName, folderOf(currentFile));
 }
 
 bool PresetManager::deletePreset(const Preset& preset)
@@ -1241,9 +1655,18 @@ bool PresetManager::deletePreset(const Preset& preset)
     if (preset.isFactory || ! preset.file.deleteFile())
         return false;
 
-    if (! currentIsFactory && currentName == preset.name)
+    if (favourites.contains(preset.getKey()))
+    {
+        favourites.removeString(preset.getKey());
+        saveFavourites();
+    }
+
+    userInfoCache.erase(preset.file.getFullPathName());
+
+    if (! currentIsFactory && currentFile == preset.file)
     {
         currentName.clear();
+        currentFile = juce::File();
         baselineState.reset();
     }
 
@@ -1251,18 +1674,34 @@ bool PresetManager::deletePreset(const Preset& preset)
 }
 
 //==============================================================================
-void PresetManager::setCurrent(const juce::String& name, bool isFactory)
+juce::String PresetManager::getCurrentFolder() const
+{
+    return currentIsFactory ? juce::String() : folderOf(currentFile);
+}
+
+bool PresetManager::isCurrent(const Preset& preset) const
+{
+    if (preset.isFactory != currentIsFactory || currentName.isEmpty())
+        return false;
+
+    return preset.isFactory ? preset.name == currentName : preset.file == currentFile;
+}
+
+void PresetManager::setCurrent(const juce::String& name, bool isFactory, const juce::File& file)
 {
     currentName      = name;
     currentIsFactory = isFactory;
+    currentFile      = isFactory ? juce::File() : file;
     baselineState    = engine.createRackState(true);
 }
 
 void PresetManager::restoreCurrent(const juce::String& name, bool isFactory,
-                                   std::unique_ptr<juce::XmlElement> baseline)
+                                   std::unique_ptr<juce::XmlElement> baseline, const juce::File& file)
 {
     currentName      = name;
     currentIsFactory = isFactory;
+    currentFile      = isFactory ? juce::File()
+                                 : (file != juce::File() ? file : userDirectory.getChildFile(name + fileExtension));
     baselineState    = std::move(baseline);
 
     // Сессии до v0.3.1 хранили эталон в обычной форме: если цепочка с ним совпадает,

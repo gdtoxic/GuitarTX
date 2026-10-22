@@ -4,6 +4,19 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
 
 ## [0.3.2] - 2026-10-22
 
+### Added
+- **Preset browser** — Browse button next to the preset name:
+  - search by name, category, folder and tags ("lead delay", "808", "A/B"), Esc clears;
+  - groups: All, Favourites, every factory category, User presets and each user folder;
+  - **tags**: factory presets are tagged automatically from their chain (clean / crunch / high-gain, rhythm / lead,
+    pitch, sub, chaos, delay, reverb, ambient, A/B); user presets get the same plus **your own tags** (Tags...);
+  - **favourites** (click the star): shown first in the browser and at the top of the quick preset menu;
+  - **folders** for user presets (New folder..., Move to...), subfolders of `%APPDATA%\GuitarTX\Presets`;
+  - **import / export** of `.gtxpreset` files; an imported name that already exists gets a number ("Name 2"),
+    files that are not GuitarTX presets are skipped;
+  - double-click or Enter loads; the current preset is highlighted.
+- Quick preset menu (click on the name): Favourites on top, user presets grouped by folder.
+
 ### Changed
 - **All 46 original factory presets reworked** with the effects that did not exist when they were made:
   - an EQ after the cabinet in every distorted preset, matched to the style (Doom weight, tight metal,
@@ -17,6 +30,8 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
   - chorus-like shimmer (Pitch LFO) on Clean Verse, Cold Wave Clean, Clean Arpeggio, Shoegaze Wash;
   - levels re-balanced; the Cabinet stays on Auto everywhere, so your own IR keeps working.
 - **EQ curves**: `<` / `>` buttons step through the factory curves, the name opens the list.
+- User presets are tracked by file: presets with the same name in different folders no longer mix up;
+  Save writes back into the preset's folder, Save As saves into the current folder.
 
 ### Fixed
 - Cabinet: the line under the buttons showed the previous state after turning **Model** (e.g. "Built-in 4x12 Modern"

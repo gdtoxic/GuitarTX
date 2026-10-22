@@ -2,9 +2,11 @@
 
 #include <JuceHeader.h>
 #include "PresetManager.h"
+#include "PresetBrowser.h"
 
-// Панель пресетов:  [<] [ Имя пресета * ] [>]  [Save] [Save As] [Delete]
-//  - клик по имени открывает список (Factory / User);
+// Панель пресетов:  [<] [ Имя пресета * ] [>]  [Browse] [Save] [Save As] [Delete]
+//  - клик по имени открывает быстрый список (избранное / factory / user по папкам);
+//  - Browse - окно браузера: поиск, теги, избранное, папки, импорт/экспорт;
 //  - "*" - цепочка изменена относительно пресета;
 //  - Save перезаписывает текущий user-пресет, для factory работает как Save As.
 class PresetBar : public juce::Component,
@@ -32,6 +34,7 @@ private:
     void timerCallback() override;
 
     void showPresetMenu();
+    void showBrowser();
 
     void save();
     void saveAs();
@@ -45,10 +48,12 @@ private:
     juce::TextButton prevButton   { "<" };
     juce::TextButton nameButton;
     juce::TextButton nextButton   { ">" };
+    juce::TextButton browseButton { "Browse" };
     juce::TextButton saveButton   { "Save" };
     juce::TextButton saveAsButton { "Save As" };
     juce::TextButton deleteButton { "Delete" };
 
+    std::unique_ptr<PresetBrowser> browser;
     std::unique_ptr<juce::AlertWindow> nameDialog;
     juce::ScopedMessageBox messageBox;
 

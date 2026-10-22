@@ -892,6 +892,9 @@
     <ClCompile Include="..\..\Source\PresetBar.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\Source\PresetBrowser.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\Source\SubProcessor.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
@@ -4243,6 +4246,9 @@
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
     <ClInclude Include="..\..\Source\PresetBar.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\PresetBrowser.h">
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
     <ClInclude Include="..\..\Source\GuitarTXLookAndFeel.h">

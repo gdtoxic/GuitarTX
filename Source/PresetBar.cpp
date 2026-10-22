@@ -7,6 +7,7 @@ PresetBar::PresetBar(PresetManager& managerToUse)
     prevButton.setTooltip("Previous preset");
     nextButton.setTooltip("Next preset");
     nameButton.setTooltip("Choose preset");
+    browseButton.setTooltip("Preset browser: search, tags, favourites, folders, import / export");
     saveButton.setTooltip("Save changes to the current preset");
     saveAsButton.setTooltip("Save as a new preset");
     deleteButton.setTooltip("Delete the current user preset");
@@ -14,11 +15,12 @@ PresetBar::PresetBar(PresetManager& managerToUse)
     prevButton.onClick   = [this] { step(-1); };
     nextButton.onClick   = [this] { step(+1); };
     nameButton.onClick   = [this] { showPresetMenu(); };
+    browseButton.onClick = [this] { showBrowser(); };
     saveButton.onClick   = [this] { save(); };
     saveAsButton.onClick = [this] { saveAs(); };
     deleteButton.onClick = [this] { deleteCurrent(); };
 
-    for (auto* button : { &prevButton, &nameButton, &nextButton,
+    for (auto* button : { &prevButton, &nameButton, &nextButton, &browseButton,
                           &saveButton, &saveAsButton, &deleteButton })
         addAndMakeVisible(button);
 
@@ -29,6 +31,7 @@ PresetBar::PresetBar(PresetManager& managerToUse)
 PresetBar::~PresetBar()
 {
     stopTimer();
+    browser.reset();
 
     if (nameDialog != nullptr)
         nameDialog->exitModalState(0);
@@ -48,8 +51,14 @@ void PresetBar::updateDisplay()
     if (lastModified)
         text += "  *";
 
+    if (! manager.isCurrentFactory() && manager.getCurrentFolder().isNotEmpty())
+        text = manager.getCurrentFolder() + " / " + text;
+
     nameButton.setButtonText(text);
     deleteButton.setEnabled(manager.hasCurrentPreset() && ! manager.isCurrentFactory());
+
+    if (browser != nullptr && browser->isVisible())
+        browser->refresh();
 }
 
 void PresetBar::timerCallback()
@@ -64,55 +73,82 @@ void PresetBar::showPresetMenu()
 {
     const auto presets = manager.getPresets();
 
-    // Factory - подменю по категориям (в порядке появления), user - плоским списком
-    std::vector<std::pair<juce::String, juce::PopupMenu>> categories;
-    juce::PopupMenu userMenu;
-    juce::String currentCategory;
+    // Избранное - сверху; factory - подменю по категориям; user - корень + подменю по папкам
+    juce::PopupMenu favouritesMenu;
+    std::vector<std::pair<juce::String, juce::PopupMenu>> categories, folders;
+    juce::PopupMenu userRoot;
+    juce::String currentCategory, currentFolder;
+
+    auto submenuFor = [](std::vector<std::pair<juce::String, juce::PopupMenu>>& list, const juce::String& name) -> juce::PopupMenu&
+    {
+        auto it = std::find_if(list.begin(), list.end(), [&name](const auto& entry) { return entry.first == name; });
+
+        if (it == list.end())
+            it = list.insert(list.end(), { name, juce::PopupMenu() });
+
+        return it->second;
+    };
 
     for (size_t i = 0; i < presets.size(); ++i)
     {
         const auto& preset  = presets[i];
-        const bool  current = preset.name == manager.getCurrentName()
-                           && preset.isFactory == manager.isCurrentFactory();
+        const bool  current = manager.isCurrent(preset);
+        const int   id      = (int) i + 1;
 
-        if (! preset.isFactory)
+        if (manager.isFavourite(preset))
+            favouritesMenu.addItem(id, preset.name, true, current);
+
+        if (preset.isFactory)
         {
-            userMenu.addItem((int) i + 1, preset.name, true, current);
-            continue;
+            const auto category = preset.category.isNotEmpty() ? preset.category : juce::String("Other");
+            submenuFor(categories, category).addItem(id, preset.name, true, current);
+
+            if (current)
+                currentCategory = category;
         }
+        else if (preset.folder.isEmpty())
+        {
+            userRoot.addItem(id, preset.name, true, current);
+        }
+        else
+        {
+            submenuFor(folders, preset.folder).addItem(id, preset.name, true, current);
 
-        const auto category = preset.category.isNotEmpty() ? preset.category : juce::String("Other");
+            if (current)
+                currentFolder = preset.folder;
+        }
+    }
 
-        auto it = std::find_if(categories.begin(), categories.end(),
-                               [&category](const auto& entry) { return entry.first == category; });
+    juce::PopupMenu menu;
 
-        if (it == categories.end())
-            it = categories.insert(categories.end(), { category, juce::PopupMenu() });
-
-        it->second.addItem((int) i + 1, preset.name, true, current);
-
-        if (current)
-            currentCategory = category;
+    if (favouritesMenu.getNumItems() > 0)
+    {
+        menu.addSectionHeader(juce::String::fromUTF8("\xe2\x98\x85 Favourites"));
+        for (juce::PopupMenu::MenuItemIterator it(favouritesMenu); it.next();)
+            menu.addItem(it.getItem());
+        menu.addSeparator();
     }
 
     juce::PopupMenu factoryMenu;
-
     for (auto& [category, submenu] : categories)
         factoryMenu.addSubMenu(category, submenu, true, nullptr, category == currentCategory);
 
-    juce::PopupMenu menu;
     menu.addSubMenu("Factory", factoryMenu);
     menu.addSeparator();
 
-    if (userMenu.getNumItems() > 0)
+    if (userRoot.getNumItems() > 0 || ! folders.empty())
         menu.addSectionHeader("User");
     else
         menu.addItem(-1, "(no user presets yet)", false);
 
-    for (juce::PopupMenu::MenuItemIterator it(userMenu); it.next();)
+    for (auto& [folder, submenu] : folders)
+        menu.addSubMenu(folder, submenu, true, nullptr, folder == currentFolder);
+
+    for (juce::PopupMenu::MenuItemIterator it(userRoot); it.next();)
         menu.addItem(it.getItem());
 
     menu.addSeparator();
+    menu.addItem(-3, "Browse presets...");
     menu.addItem(-2, "Open presets folder");
 
     juce::Component::SafePointer<PresetBar> safeThis(this);
@@ -123,9 +159,15 @@ void PresetBar::showPresetMenu()
                            if (safeThis == nullptr || result == 0)
                                return;
 
+                           if (result == -3)
+                           {
+                               safeThis->showBrowser();
+                               return;
+                           }
+
                            if (result == -2)
                            {
-                               const auto dir = PresetManager::getPresetDirectory();
+                               const auto& dir = safeThis->manager.getUserDirectory();
                                dir.createDirectory();
                                dir.startAsProcess();
                                return;
@@ -134,6 +176,29 @@ void PresetBar::showPresetMenu()
                            if (juce::isPositiveAndNotGreaterThan(result, (int) presets.size()))
                                safeThis->loadPreset(presets[(size_t) result - 1]);
                        });
+}
+
+void PresetBar::showBrowser()
+{
+    if (browser == nullptr)
+    {
+        browser = std::make_unique<PresetBrowser>(manager);
+        browser->onLoad = [this](const PresetManager::Preset& preset) { loadPreset(preset); };
+        browser->onLibraryChanged = [this]
+        {
+            updateDisplay();
+
+            if (onPresetSaved != nullptr)
+                onPresetSaved();
+        };
+
+        if (auto* top = getTopLevelComponent())
+            browser->centreAroundComponent(top, browser->getWidth(), browser->getHeight());
+    }
+
+    browser->refresh();
+    browser->setVisible(true);
+    browser->toFront(true);
 }
 
 void PresetBar::loadPreset(const PresetManager::Preset& preset)
@@ -176,7 +241,16 @@ void PresetBar::save()
         return;
     }
 
-    storeAs(manager.getCurrentName());
+    if (! manager.saveCurrentUserPreset())
+    {
+        storeAs(manager.getCurrentName());
+        return;
+    }
+
+    updateDisplay();
+
+    if (onPresetSaved != nullptr)
+        onPresetSaved();
 }
 
 void PresetBar::saveAs()
@@ -208,7 +282,7 @@ void PresetBar::saveAs()
         if (result != 1 || name.isEmpty())
             return;
 
-        if (safeThis->manager.userPresetExists(name))
+        if (safeThis->manager.userPresetExists(name, safeThis->manager.getCurrentFolder()))
             safeThis->confirmOverwrite(name);
         else
             safeThis->storeAs(name);
@@ -235,14 +309,15 @@ void PresetBar::confirmOverwrite(const juce::String& name)
 
 void PresetBar::storeAs(const juce::String& name)
 {
-    if (! manager.saveUserPreset(name))
+    // Save As - в папку текущего user-пресета (для factory - в корень)
+    if (! manager.saveUserPreset(name, manager.getCurrentFolder()))
     {
         messageBox = juce::AlertWindow::showScopedAsync(
             juce::MessageBoxOptions()
                 .withIconType(juce::MessageBoxIconType::WarningIcon)
                 .withTitle("Save preset")
                 .withMessage("Could not save preset to\n"
-                             + PresetManager::getPresetDirectory().getFullPathName())
+                             + manager.getUserDirectory().getFullPathName())
                 .withButton("OK"),
             nullptr);
         return;
@@ -260,6 +335,7 @@ void PresetBar::deleteCurrent()
         return;
 
     const auto name = manager.getCurrentName();
+    const auto file = manager.getCurrentFile();
     juce::Component::SafePointer<PresetBar> safeThis(this);
 
     messageBox = juce::AlertWindow::showScopedAsync(
@@ -269,14 +345,14 @@ void PresetBar::deleteCurrent()
             .withMessage("Delete preset \"" + name + "\"?")
             .withButton("Delete")
             .withButton("Cancel"),
-        [safeThis, name](int result)
+        [safeThis, file](int result)
         {
             if (safeThis == nullptr || result != 1)
                 return;
 
             for (const auto& preset : safeThis->manager.getPresets())
             {
-                if (! preset.isFactory && preset.name == name)
+                if (! preset.isFactory && preset.file == file)
                 {
                     safeThis->manager.deletePreset(preset);
                     break;
@@ -300,6 +376,8 @@ void PresetBar::resized()
     saveAsButton.setBounds(area.removeFromRight(70));
     area.removeFromRight(6);
     saveButton.setBounds(area.removeFromRight(56));
+    area.removeFromRight(6);
+    browseButton.setBounds(area.removeFromRight(66));
     area.removeFromRight(12);
 
     prevButton.setBounds(area.removeFromLeft(28));

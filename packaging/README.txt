@@ -14,6 +14,7 @@ MIDI: MIDI button. Right-click a knob -> MIDI Learn (expression pedal), right-cl
 Recorder: REC button - DI (dry) + Wet (processed) WAV files in Documents\GuitarTX\Recordings.
      Re-amp (menu next to REC): plays a DI file through the current preset and records it again.
 Snapshots A/B: two sets of knob values / On-Off per preset (right-click A or B to copy).
+Preset browser: Browse button - search, favourites, tags, folders, import / export (.gtxpreset).
 Presets: %APPDATA%\GuitarTX\Presets
 
 Source code: https://github.com/gdtoxic/GuitarTX

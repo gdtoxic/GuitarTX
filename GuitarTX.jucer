@@ -48,6 +48,8 @@
       <FILE id="XlFRPT" name="PresetManager.cpp" compile="1" resource="0" file="Source/PresetManager.cpp"/>
       <FILE id="DxsObF" name="PresetBar.h" compile="0" resource="0" file="Source/PresetBar.h"/>
       <FILE id="cMqkke" name="PresetBar.cpp" compile="1" resource="0" file="Source/PresetBar.cpp"/>
+      <FILE id="prsBrH" name="PresetBrowser.h" compile="0" resource="0" file="Source/PresetBrowser.h"/>
+      <FILE id="prsBrC" name="PresetBrowser.cpp" compile="1" resource="0" file="Source/PresetBrowser.cpp"/>
       <FILE id="zuRqNz" name="GuitarTXLookAndFeel.h" compile="0" resource="0" file="Source/GuitarTXLookAndFeel.h"/>
       <FILE id="dIsZyY" name="SubProcessor.h" compile="0" resource="0" file="Source/SubProcessor.h"/>
       <FILE id="kuylqg" name="SubProcessor.cpp" compile="1" resource="0" file="Source/SubProcessor.cpp"/>

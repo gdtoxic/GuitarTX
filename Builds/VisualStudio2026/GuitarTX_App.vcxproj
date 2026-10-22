@@ -160,6 +160,7 @@
     <ClCompile Include="..\..\Source\DistortionProcessor.cpp"/>
     <ClCompile Include="..\..\Source\PresetManager.cpp"/>
     <ClCompile Include="..\..\Source\PresetBar.cpp"/>
+    <ClCompile Include="..\..\Source\PresetBrowser.cpp"/>
     <ClCompile Include="..\..\Source\SubProcessor.cpp"/>
     <ClCompile Include="..\..\Source\ChaosProcessor.cpp"/>
     <ClCompile Include="..\..\Source\MasterProcessor.cpp"/>
@@ -3242,6 +3243,7 @@
     <ClInclude Include="..\..\Source\DistortionProcessor.h"/>
     <ClInclude Include="..\..\Source\PresetManager.h"/>
     <ClInclude Include="..\..\Source\PresetBar.h"/>
+    <ClInclude Include="..\..\Source\PresetBrowser.h"/>
     <ClInclude Include="..\..\Source\GuitarTXLookAndFeel.h"/>
     <ClInclude Include="..\..\Source\SubProcessor.h"/>
     <ClInclude Include="..\..\Source\ChaosProcessor.h"/>

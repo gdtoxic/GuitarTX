@@ -932,6 +932,107 @@ static void testRecorder()
     folder.deleteRecursively();
 }
 
+// Библиотека пресетов: теги, папки, избранное, импорт/экспорт, поиск (во временной папке)
+static void testPresetLibrary()
+{
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("guitartx_presets_test");
+    dir.deleteRecursively();
+
+    AudioEngine engine;
+    auto presets = std::make_unique<PresetManager>(engine, dir);
+
+    auto find = [&presets](const juce::String& name, const juce::String& folder = {}, bool factory = false)
+    {
+        for (const auto& p : presets->getPresets())
+            if (p.name == name && p.isFactory == factory && (factory || p.folder == folder))
+                return p;
+        return PresetManager::Preset {};
+    };
+
+    // Вычисленные теги заводских пресетов
+    const auto doom  = find("Doom Rhythm", {}, true);
+    const auto clean = find("Clean Arpeggio", {}, true);
+    const auto hole  = find("Black Hole", {}, true);
+    const auto arena = find("Arena Lead", {}, true);
+    std::printf("Factory tags: Doom Rhythm [%s], Clean Arpeggio [%s], Black Hole [%s], Arena Lead [%s]\n",
+                doom.tags.joinIntoString(",").toRawUTF8(), clean.tags.joinIntoString(",").toRawUTF8(),
+                hole.tags.joinIntoString(",").toRawUTF8(), arena.tags.joinIntoString(",").toRawUTF8());
+    CHECK(doom.tags.contains("high-gain") && doom.tags.contains("rhythm") && doom.tags.contains("A/B") && doom.hasSnapshots, "Doom Rhythm tags");
+    CHECK(clean.tags.contains("clean") && clean.tags.contains("pitch") && ! clean.tags.contains("rhythm"), "Clean Arpeggio tags");
+    CHECK(hole.tags.contains("ambient") && arena.tags.contains("lead"), "ambient / lead tags");
+
+    // Сохранение в корень и в подпапку; одинаковые имена в разных папках
+    presets->loadPreset(doom);
+    CHECK(presets->saveUserPreset("Riff"), "save root");
+    CHECK(presets->saveUserPreset("Riff", "Live/Set 1"), "save folder");
+    CHECK(presets->saveUserPreset("Alpha", "Live/Set 1"), "save folder 2");
+    CHECK(presets->getCurrentFolder() == "Live/Set 1", "current folder");
+
+    // Теги user-пресета вычисляются по файлу так же, как у заводского (On/Off по умолчанию не записан в файл)
+    CHECK(find("Riff").tags.contains("high-gain") && find("Riff").tags.contains("A/B"), "user preset tags from file");
+
+    juce::StringArray order;
+    for (const auto& p : presets->getPresets())
+        if (! p.isFactory)
+            order.add((p.folder.isEmpty() ? "" : p.folder + "/") + p.name);
+    std::printf("User presets: %s; folders: %s\n", order.joinIntoString(" | ").toRawUTF8(),
+                presets->getUserFolders().joinIntoString(", ").toRawUTF8());
+    CHECK(order.joinIntoString("|") == "Riff|Live/Set 1/Alpha|Live/Set 1/Riff", "user order (root first, then folders)");
+
+    // Следующий/предыдущий различает одноимённые пресеты
+    presets->loadPreset(find("Riff"));
+    presets->loadNext(+1);
+    CHECK(presets->getCurrentName() == "Alpha", "next after root Riff");
+    presets->loadNext(+1);
+    CHECK(presets->getCurrentName() == "Riff" && presets->getCurrentFolder() == "Live/Set 1", "next reaches folder Riff");
+
+    // Save перезаписывает на месте и сохраняет теги
+    CHECK(presets->setUserTags(find("Riff", "Live/Set 1"), { "Opener", "drop D" }), "set tags");
+    CHECK(presets->saveCurrentUserPreset(), "save current");
+    const auto tagged = find("Riff", "Live/Set 1");
+    CHECK(tagged.userTags.joinIntoString(",") == "Opener,drop D" && tagged.tags.contains("Opener"), "user tags kept after save");
+
+    // Поиск: все слова запроса
+    CHECK(PresetManager::matchesSearch(tagged, "riff opener") && PresetManager::matchesSearch(tagged, "set 1"), "search hit");
+    CHECK(! PresetManager::matchesSearch(tagged, "riff ambient"), "search miss");
+    CHECK(PresetManager::matchesSearch(hole, "insane ambient"), "search by category + tag");
+
+    // Избранное переживает перезапуск и перенос в папку
+    presets->setFavourite(find("Riff"), true);
+    presets->setFavourite(doom, true);
+    presets->loadPreset(find("Riff"));
+    CHECK(presets->moveToFolder(find("Riff"), "Favs"), "move to folder");
+    CHECK(presets->getCurrentFolder() == "Favs", "current follows move");
+
+    presets = std::make_unique<PresetManager>(engine, dir);
+    const bool favMoved = presets->isFavourite(find("Riff", "Favs"));
+    const bool favFactory = presets->isFavourite(find("Doom Rhythm", {}, true));
+    std::printf("Favourites after restart: moved user %d, factory %d\n", (int) favMoved, (int) favFactory);
+    CHECK(favMoved && favFactory, "favourites persist");
+
+    // Экспорт factory -> импорт (дважды: второе имя с номером), мусор пропускается
+    const auto exported = dir.getSiblingFile("guitartx_export.gtxpreset");
+    CHECK(presets->exportPreset(hole, exported), "export");
+    const auto junk = dir.getSiblingFile("guitartx_junk.gtxpreset");
+    junk.replaceWithText("not a preset");
+
+    const auto result = presets->importPresets({ exported, exported, junk });
+    std::printf("Import: %s; skipped: %s\n", result.imported.joinIntoString(", ").toRawUTF8(),
+                result.skipped.joinIntoString(", ").toRawUTF8());
+    CHECK(result.imported.joinIntoString("|") == "Black Hole|Black Hole 2" && result.skipped.size() == 1, "import result");
+
+    // Импортированный пресет звучит как заводской
+    presets->loadPreset(hole);
+    auto factoryState = engine.createRackState(true);
+    CHECK(presets->loadPreset(find("Black Hole")), "load imported");
+    auto importedState = engine.createRackState(true);
+    CHECK(factoryState->isEquivalentTo(importedState.get(), false), "imported preset differs from the factory one");
+
+    exported.deleteFile();
+    junk.deleteFile();
+    dir.deleteRecursively();
+}
+
 // Отметка этапа для CI: при падении процесса последняя отметка показывает, где
 static void stage(const char* name)
 {
@@ -964,6 +1065,8 @@ int main()
     testSnapshots();
     stage("testRecorder");
     testRecorder();
+    stage("testPresetLibrary");
+    testPresetLibrary();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

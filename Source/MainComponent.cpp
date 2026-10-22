@@ -208,9 +208,12 @@ void MainComponent::restoreSession(const juce::XmlElement* oldRackState)
         if (auto* stored = session->getChildByName("GuitarTXRack"))
             baseline = std::make_unique<juce::XmlElement>(*stored);
 
+        const auto presetFile = session->getStringAttribute("presetFile");
+
         presetManager.restoreCurrent(presetName,
                                      session->getBoolAttribute("presetFactory"),
-                                     std::move(baseline));
+                                     std::move(baseline),
+                                     juce::File::isAbsolutePath(presetFile) ? juce::File(presetFile) : juce::File());
     }
 }
 
@@ -798,6 +801,9 @@ std::unique_ptr<juce::XmlElement> MainComponent::createSessionState() const
     {
         xml->setAttribute("presetName",    presetManager.getCurrentName());
         xml->setAttribute("presetFactory", presetManager.isCurrentFactory());
+
+        if (! presetManager.isCurrentFactory())
+            xml->setAttribute("presetFile", presetManager.getCurrentFile().getFullPathName());
 
         if (auto* baseline = presetManager.getBaseline())
             xml->addChildElement(new juce::XmlElement(*baseline));
