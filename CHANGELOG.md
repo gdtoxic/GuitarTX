@@ -2,6 +2,27 @@
 
 All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
 
+## [0.3.2] - 2026-10-22
+
+### Changed
+- **All 46 original factory presets reworked** with the effects that did not exist when they were made:
+  - an EQ after the cabinet in every distorted preset, matched to the style (Doom weight, tight metal,
+    thrash scoop, nu-metal low end, djent click, lead mid push, clean sparkle);
+  - **snapshot B** in 23 of them (30 factory presets with A/B in total): rhythm -> lead with delay and reverb
+    (Doom Rhythm, Tight Chug, Thrash Rhythm, Classic Heavy, Crunch Rhythm, Grunge Wall…), pitch tricks on B
+    (Doom Divider and Metalcore Breakdown dive on every hit, Machine Rhythm octave trill, Robot Ring random notes,
+    Whammy Squeal sweeping LFO, Djent Tight / Scooped 7-String / Grind Gate octave down, Drop Chug squeal),
+    Clean Verse -> heavy chorus, Industrial Crush -> "radio" break, Black Metal Tremolo -> atmospheric part;
+  - leads got delay and reverb where they had none (Doom Lead, Doom Lead Scream, Whammy Octave Lead, Bitcrush Lead);
+  - chorus-like shimmer (Pitch LFO) on Clean Verse, Cold Wave Clean, Clean Arpeggio, Shoegaze Wash;
+  - levels re-balanced; the Cabinet stays on Auto everywhere, so your own IR keeps working.
+- **EQ curves**: `<` / `>` buttons step through the factory curves, the name opens the list.
+
+### Fixed
+- Cabinet: the line under the buttons showed the previous state after turning **Model** (e.g. "Built-in 4x12 Modern"
+  while Vintage was selected). Loading an IR now switches Model to **Auto** so the IR is actually heard;
+  long IR names are cut with "…" (full path in the tooltip).
+
 ## [0.3.1] - 2026-10-21
 
 ### Added

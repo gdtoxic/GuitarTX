@@ -29,6 +29,10 @@ public:
     bool  isUsingImpulseResponse() const noexcept;
     Model getActiveBuiltInModel() const noexcept;
 
+    // То же для заданного положения Model (UI: новое значение приходит раньше, чем его видит процессор)
+    bool         isUsingImpulseResponse(Model model) const noexcept { return model == Model::automatic && irLoaded.load(); }
+    static Model builtInModelFor(Model model) noexcept               { return model == Model::automatic ? Model::modern412 : model; }
+
     // Вызывается из message thread. Файл читается сразу,
     // а перестройка свёртки идёт в фоновом потоке Convolution.
     // Возвращает false, если файла нет.

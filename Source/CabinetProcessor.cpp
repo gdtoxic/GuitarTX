@@ -93,13 +93,12 @@ juce::String CabinetProcessor::getModelName(Model model)
 
 bool CabinetProcessor::isUsingImpulseResponse() const noexcept
 {
-    return (Model) juce::roundToInt(modelChoice.load()) == Model::automatic && irLoaded.load();
+    return isUsingImpulseResponse((Model) juce::jlimit(0, 4, juce::roundToInt(modelChoice.load())));
 }
 
 CabinetProcessor::Model CabinetProcessor::getActiveBuiltInModel() const noexcept
 {
-    const auto model = (Model) juce::jlimit(0, 4, juce::roundToInt(modelChoice.load()));
-    return model == Model::automatic ? Model::modern412 : model;
+    return builtInModelFor((Model) juce::jlimit(0, 4, juce::roundToInt(modelChoice.load())));
 }
 
 juce::String CabinetProcessor::getStatusText() const

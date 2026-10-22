@@ -116,7 +116,9 @@ protected:
 
 private:
     void chooseImpulseResponse();
-    void updateIrLabel();
+
+    // modelIndex - положение Model; без него берётся текущее значение параметра
+    void updateIrLabel(std::optional<int> modelIndex = std::nullopt);
 
     CabinetProcessor& cabinet;
 
@@ -143,11 +145,13 @@ private:
     class CurveView;
 
     void showCurveMenu();
+    void stepCurve(int direction);   // < / >: соседняя кривая по кругу
     void updateCurveButton();
 
     EqProcessor& eq;
     std::unique_ptr<CurveView> curve;
-    juce::TextButton curveButton;
+    juce::TextButton prevCurveButton { "<" }, curveButton, nextCurveButton { ">" };
+    int lastCurveIndex = 0;   // от неё шагают стрелки, если ручки уже покрутили (Custom)
 };
 
 //==============================================================================

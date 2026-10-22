@@ -629,7 +629,7 @@ static void testPresets()
 {
     AudioEngine engine;
     PresetManager presets(engine);
-    int factory = 0;
+    int factory = 0, withSnapshots = 0;
 
     for (const auto& preset : presets.getPresets())
     {
@@ -641,9 +641,18 @@ static void testPresets()
         CHECK(engine.getNumEffects() + engine.getNumEffects(AudioEngine::Lane::parallel) > 0,
               "preset %s is empty", preset.name.toRawUTF8());
         CHECK(! presets.isModified(), "preset %s reports modified right after load", preset.name.toRawUTF8());
+
+        if (engine.hasSnapshots())
+        {
+            ++withSnapshots;
+            engine.selectSnapshot(1);
+            CHECK(! presets.isModified(), "preset %s reports modified after switching to B", preset.name.toRawUTF8());
+            engine.selectSnapshot(0);
+            CHECK(! presets.isModified(), "preset %s reports modified after switching back to A", preset.name.toRawUTF8());
+        }
     }
 
-    std::printf("Presets: %d factory presets loaded\n", factory);
+    std::printf("Presets: %d factory presets loaded, %d with snapshot B\n", factory, withSnapshots);
     CHECK(factory >= 68, "expected at least 68 factory presets, got %d", factory);
 }
 
@@ -817,7 +826,7 @@ static void testSnapshots()
 
     // Новый пресет без снапшотов: снова A
     for (const auto& preset : presets.getPresets())
-        if (preset.isFactory && preset.name == "Doom Rhythm")
+        if (preset.isFactory && preset.name == "Doom 808")
             presets.loadPreset(preset);
     CHECK(engine.getActiveSnapshot() == 0 && ! engine.hasSnapshots(), "snapshot state leaked into the next preset");
 

@@ -177,10 +177,16 @@ CabinetPanel::CabinetPanel(CabinetProcessor& cabinetToEdit)
     };
     addAndMakeVisible(clearIrButton);
 
+    // Длинные имена файлов: обрезать с "...", а не сжимать шрифт; полный путь - в подсказке
+    irLabel.setMinimumHorizontalScale(1.0f);
     addAndMakeVisible(irLabel);
 
     if (auto* model = cabinet.getValueTreeState().getParameter("model"))
-        modelWatcher = std::make_unique<juce::ParameterAttachment>(*model, [this](float) { updateIrLabel(); });
+        modelWatcher = std::make_unique<juce::ParameterAttachment>(*model, [this](float value)
+        {
+            // Колбэк приходит до того, как процессор увидит новое значение: используем его
+            updateIrLabel(juce::roundToInt(value));
+        });
 
     updateIrLabel();
 }
@@ -217,39 +223,56 @@ void CabinetPanel::chooseImpulseResponse()
 
         if (file.existsAsFile())
         {
-            safeThis->cabinet.loadImpulseResponse(file);
-            safeThis->updateIrLabel();
+            auto& cab = safeThis->cabinet;
+            cab.loadImpulseResponse(file);
+
+            // Загрузили IR - значит, хотим его слышать: Model -> Auto (через параметр, чтобы ручка повернулась)
+            if (auto* model = cab.getValueTreeState().getParameter("model"))
+                if (cab.getActiveBuiltInModel() != CabinetProcessor::Model::automatic && ! cab.isUsingImpulseResponse())
+                    model->setValueNotifyingHost(model->convertTo0to1(0.0f));
+
+            safeThis->updateIrLabel(0);
         }
     });
 }
 
-void CabinetPanel::updateIrLabel()
+void CabinetPanel::updateIrLabel(std::optional<int> modelIndex)
 {
+    using Model = CabinetProcessor::Model;
+
+    const auto model = modelIndex.has_value() ? (Model) juce::jlimit(0, 4, *modelIndex)
+                                              : (Model) juce::jlimit(0, 4, juce::roundToInt(
+                                                    cabinet.getValueTreeState().getRawParameterValue("model")->load()));
     const auto file    = cabinet.getImpulseResponseFile();
-    const auto builtIn = CabinetProcessor::getModelName(cabinet.getActiveBuiltInModel());
+    const auto builtIn = CabinetProcessor::getModelName(CabinetProcessor::builtInModelFor(model));
 
     clearIrButton.setEnabled(file != juce::File());
+    irLabel.setTooltip(file != juce::File() ? file.getFullPathName() : juce::String());
 
-    if (cabinet.isUsingImpulseResponse())
+    juce::String text;
+    juce::Colour colour = juce::Colours::grey;
+
+    if (cabinet.isUsingImpulseResponse(model))
     {
-        irLabel.setText(file.getFileName(), juce::dontSendNotification);
-        irLabel.setColour(juce::Label::textColourId, juce::Colours::limegreen);
+        text   = "IR: " + file.getFileNameWithoutExtension();
+        colour = juce::Colours::limegreen;
     }
     else if (cabinet.hasImpulseResponse())
     {
-        irLabel.setText(file.getFileName() + " (not used: Model = " + builtIn + ")", juce::dontSendNotification);
-        irLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
+        text = "Built-in " + builtIn + "   (IR loaded: turn Model to Auto to use it)";
     }
     else if (file != juce::File())
     {
-        irLabel.setText("IR not found: " + file.getFileName() + "  ->  built-in " + builtIn, juce::dontSendNotification);
-        irLabel.setColour(juce::Label::textColourId, juce::Colours::orange);
+        text   = "IR not found: " + file.getFileName() + "   ->  built-in " + builtIn;
+        colour = juce::Colours::orange;
     }
     else
     {
-        irLabel.setText("Built-in " + builtIn + "  (load an IR for your own cabinet)", juce::dontSendNotification);
-        irLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
+        text = "Built-in " + builtIn + "   (Load IR... for your own cabinet)";
     }
+
+    irLabel.setText(text, juce::dontSendNotification);
+    irLabel.setColour(juce::Label::textColourId, colour);
 }
 
 //==============================================================================
@@ -621,17 +644,43 @@ EqPanel::EqPanel(EqProcessor& eqToEdit)
 {
     addAndMakeVisible(*curve);
 
-    curveButton.setTooltip("Factory EQ curves");
+    curveButton.setTooltip("Factory EQ curves: click for the list");
     curveButton.onClick = [this] { showCurveMenu(); };
     addAndMakeVisible(curveButton);
 
+    prevCurveButton.setTooltip("Previous EQ curve");
+    nextCurveButton.setTooltip("Next EQ curve");
+    prevCurveButton.onClick = [this] { stepCurve(-1); };
+    nextCurveButton.onClick = [this] { stepCurve(+1); };
+    addAndMakeVisible(prevCurveButton);
+    addAndMakeVisible(nextCurveButton);
+
     curve->onSettingsChanged = [this] { updateCurveButton(); };
+    updateCurveButton();
+}
+
+void EqPanel::stepCurve(int direction)
+{
+    const auto& presets = EqProcessor::getCurvePresets();
+    const int count   = (int) presets.size();
+    const int current = eq.findMatchingCurvePreset();
+    const int from    = current >= 0 ? current : lastCurveIndex;
+
+    // Из Custom первый шаг вперёд - на ту же кривую, от которой ушли
+    const int next = current < 0 && direction > 0 ? from : ((from + direction) % count + count) % count;
+
+    eq.applyCurvePreset(presets[(size_t) next]);
+    lastCurveIndex = next;
     updateCurveButton();
 }
 
 void EqPanel::updateCurveButton()
 {
     const int index = eq.findMatchingCurvePreset();
+
+    if (index >= 0)
+        lastCurveIndex = index;
+
     curveButton.setButtonText("Curve: " + (index >= 0 ? juce::String(EqProcessor::getCurvePresets()[(size_t) index].name)
                                                       : juce::String("Custom")) + juce::String::fromUTF8("  \xe2\x96\xbe"));
 }
@@ -655,6 +704,7 @@ void EqPanel::showCurveMenu()
                                return;
 
                            safeThis->eq.applyCurvePreset(EqProcessor::getCurvePresets()[(size_t) (result - 1)]);
+                           safeThis->lastCurveIndex = result - 1;
                            safeThis->updateCurveButton();
                        });
 }
@@ -665,7 +715,13 @@ void EqPanel::resized()
 {
     EffectPanel::resized();
 
-    curveButton.setBounds(getWidth() - 12 - 190, 10, 190, titleHeight - 6);
+    // [<] [Curve: имя v] [>] в строке заголовка справа
+    auto row = juce::Rectangle<int>(getWidth() - 12 - 250, 10, 250, titleHeight - 6);
+    nextCurveButton.setBounds(row.removeFromRight(28));
+    row.removeFromRight(4);
+    prevCurveButton.setBounds(row.removeFromLeft(28));
+    row.removeFromLeft(4);
+    curveButton.setBounds(row);
 
     // Повторяем раскладку базового класса, чтобы найти свободное место в последнем ряду
     auto area = getLocalBounds().reduced(12, 8);
