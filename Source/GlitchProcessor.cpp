@@ -1,4 +1,5 @@
 #include "GlitchProcessor.h"
+#include "GlobalTempo.h"
 
 namespace
 {
@@ -40,7 +41,7 @@ std::optional<double> GlitchProcessor::TapTempo::tap(double nowMs)
         return std::nullopt;
 
     const double average = (taps.back() - taps.front()) / (double) (taps.size() - 1);
-    return juce::jlimit(40.0, 240.0, 60000.0 / average);
+    return juce::jlimit(40.0, 300.0, 60000.0 / average);
 }
 
 //==============================================================================
@@ -48,6 +49,7 @@ GlitchProcessor::GlitchProcessor()
     : EffectBase(createLayout()),
       modeChoice    (getParameterValue("mode")),
       bpm           (getParameterValue("bpm")),
+      syncValue     (getParameterValue("sync")),
       divisionChoice(getParameterValue("division")),
       rampPercent   (getParameterValue("ramp")),
       chaosPercent  (getParameterValue("chaos")),
@@ -64,6 +66,7 @@ EffectBase::Layout GlitchProcessor::createLayout()
 
     layout.add(makeChoiceParameter("mode",     "Mode",     { "Stutter", "Glitch", "Freeze" }, 0));
     layout.add(makeFloatParameter ("bpm",      "BPM",       40.0f,   240.0f,  0.1f,   120.0f, "",   1));
+    layout.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "sync", 1 }, "Sync", false));
     layout.add(makeChoiceParameter("division", "Division", divisions(), 4));
     layout.add(makeFloatParameter ("ramp",     "Ramp",       0.0f,   100.0f,  1.0f,     0.0f, "%",  0));
     layout.add(makeFloatParameter ("chaos",    "Chaos",      0.0f,   100.0f,  1.0f,    50.0f, "%",  0));
@@ -101,8 +104,19 @@ juce::String GlitchProcessor::getStatusText() const
     }
 }
 
+double GlitchProcessor::getEffectiveBpm() const noexcept
+{
+    return isSynced() ? GlobalTempo::get().getBpm() : (double) juce::jmax(1.0f, bpm.load());
+}
+
 void GlitchProcessor::setTempo(double beatsPerMinute)
 {
+    if (isSynced())
+    {
+        GlobalTempo::get().setBpm(beatsPerMinute);
+        return;
+    }
+
     if (auto* parameter = getValueTreeState().getParameter("bpm"))
     {
         const auto value = (float) juce::jlimit(40.0, 240.0, beatsPerMinute);
@@ -443,7 +457,7 @@ void GlitchProcessor::processEffect(juce::AudioBuffer<float>& buffer)
         lastToneHz = tone;
     }
 
-    const int   step = juce::roundToInt(60.0 / juce::jmax(1.0f, bpm.load())
+    const int   step = juce::roundToInt(60.0 / getEffectiveBpm()
                                         * divisionBeats(juce::roundToInt(divisionChoice.load())) * sampleRate);
     const float mix  = mixPercent.load() * 0.01f;
 

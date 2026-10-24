@@ -22,6 +22,9 @@
 #include "DistortionProcessor.h"
 #include "NoiseGateProcessor.h"
 #include "GlitchProcessor.h"
+#include "DrumMachine.h"
+#include "DrumLibrary.h"
+#include "GlobalTempo.h"
 #include <cstdio>
 #include <cstdlib>
 
@@ -1139,6 +1142,271 @@ static void testGlitch()
     }
 }
 
+// Позиции ударов: начала участков выше порога после тишины
+static std::vector<int> onsets(const std::vector<float>& x, float threshold)
+{
+    std::vector<int> result;
+    int quiet = 1000;
+
+    for (size_t i = 0; i < x.size(); ++i)
+    {
+        if (std::abs(x[i]) > threshold && quiet >= 100) result.push_back((int) i);
+        quiet = std::abs(x[i]) > threshold * 0.1f ? 0 : quiet + 1;
+    }
+
+    return result;
+}
+
+static juce::String joinInts(const std::vector<int>& v)
+{
+    juce::StringArray parts;
+    for (int x : v) parts.add(juce::String(x));
+    return parts.joinIntoString(" ");
+}
+
+static void testDrums()
+{
+    const double sr = 48000; const int block = 256;
+    auto& tempo = GlobalTempo::get();
+
+    // Щелчок-сэмпл: удар виден ровно в сэмпле срабатывания
+    const auto clickFile = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("guitartx_click.wav");
+    {
+        clickFile.deleteFile();
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream>(clickFile);
+        auto writer = wav.createWriterFor(stream, juce::AudioFormatWriterOptions{}.withSampleRate(sr).withNumChannels(1).withBitsPerSample(24));
+        juce::AudioBuffer<float> click(1, 2000);
+        click.clear();
+        click.setSample(0, 0, 1.0f);
+        writer->writeFromAudioSampleBuffer(click, 0, click.getNumSamples());
+    }
+
+    auto makeDrums = [&](std::unique_ptr<DrumMachine>& drums)
+    {
+        drums = std::make_unique<DrumMachine>();
+        drums->setLevelDb(0.0f);   // до prepare: иначе громкость плавно доезжает и первый удар тише
+        drums->setPlayConfigDetails(2, 2, sr, block);
+        drums->prepareToPlay(sr, block);
+        juce::String error;
+        CHECK(drums->loadSample(0, clickFile, error), "load click sample: %s", error.toRawUTF8());
+    };
+
+    auto silence = [&](double seconds) { return std::vector<float>((size_t) (seconds * sr) / block * block, 0.0f); };
+
+    // 1. Четверти на 120 BPM: ровно каждые 24000 сэмплов
+    {
+        tempo.setBpm(120.0);
+        std::unique_ptr<DrumMachine> drums; makeDrums(drums);
+        drums->setPattern(DrumPattern::fromRows("Quarters", DrumPattern::Grid::sixteenth, 0.0f,
+                                                { { DrumPattern::Track::kick, "x...x...x...x..." } }), true);
+        drums->setPlaying(true);
+
+        const auto hits = onsets(run(*drums, silence(2.1), block)[0], 0.3f);
+        std::printf("Drums 120 BPM quarters: %s\n", joinInts(hits).toRawUTF8());
+        CHECK(hits == std::vector<int>({ 0, 24000, 48000, 72000, 96000 }), "drum quarter timing");
+    }
+
+    // 2. Swing 50 %: каждый второй шаг 1/16 сдвинут на четверть шага (1500 сэмплов)
+    {
+        tempo.setBpm(120.0);
+        std::unique_ptr<DrumMachine> drums; makeDrums(drums);
+        drums->setPattern(DrumPattern::fromRows("Swing", DrumPattern::Grid::sixteenth, 50.0f,
+                                                { { DrumPattern::Track::kick, "xxxx" } }), true);
+        drums->setPlaying(true);
+
+        const auto hits = onsets(run(*drums, silence(0.6), block)[0], 0.3f);
+        std::printf("Drums swing 50%%: %s\n", joinInts(hits).toRawUTF8());
+        CHECK(hits.size() >= 4 && hits[0] == 0 && hits[1] == 7500 && hits[2] == 12000 && hits[3] == 19500, "drum swing");
+    }
+
+    // 3. Смена темпа на ходу: шаг пересчитывается со следующего удара, без двойных ударов
+    {
+        tempo.setBpm(120.0);
+        std::unique_ptr<DrumMachine> drums; makeDrums(drums);
+        drums->setPattern(DrumPattern::fromRows("Quarters", DrumPattern::Grid::sixteenth, 0.0f,
+                                                { { DrumPattern::Track::kick, "x..." } }), true);
+        drums->setPlaying(true);
+
+        const int change = (int) (sr * 0.6) / block * block;
+        const auto hits = onsets(run(*drums, silence(2.0), block, [&](int start) { if (start == change) tempo.setBpm(60.0); })[0], 0.3f);
+        std::printf("Drums tempo 120 -> 60: %s\n", joinInts(hits).toRawUTF8());
+        // 0, 24000; шаг 1 уже назначен на 30000 по 120 BPM, дальше шаги по 12000 (60 BPM) -> 66000
+        CHECK(hits.size() >= 3 && hits[0] == 0 && hits[1] == 24000 && hits[2] == 66000, "drum tempo change");
+        tempo.setBpm(120.0);
+    }
+
+    // 4. Выбор другого паттерна во время игры - с начала следующего такта
+    {
+        tempo.setBpm(120.0);
+        std::unique_ptr<DrumMachine> drums; makeDrums(drums);
+        drums->setPattern(DrumPattern::fromRows("A", DrumPattern::Grid::sixteenth, 0.0f,
+                                                { { DrumPattern::Track::kick, "x..............." } }), true);
+        drums->setPlaying(true);
+
+        const auto b = DrumPattern::fromRows("B", DrumPattern::Grid::sixteenth, 0.0f,
+                                             { { DrumPattern::Track::kick, "x.......x......." } });
+        const int switchAt = (int) (sr * 0.5) / block * block;
+        bool queuedSeen = false;
+        const auto hits = onsets(run(*drums, silence(3.2), block, [&](int start)
+        {
+            if (start == switchAt) { drums->setPattern(b, false); queuedSeen = drums->hasQueuedPattern(); }
+        })[0], 0.3f);
+
+        std::printf("Drums queued pattern: %s\n", joinInts(hits).toRawUTF8());
+        CHECK(queuedSeen && hits == std::vector<int>({ 0, 96000, 144000 }) && ! drums->hasQueuedPattern(), "queued pattern switch");
+    }
+
+    // 5. Синтезированные звуки всех китов: конечные, нужного уровня, затухают в ноль
+    {
+        for (int kit = 0; kit < 3; ++kit)
+            for (int t = 0; t < DrumPattern::numTracks; ++t)
+            {
+                const auto sound = DrumSynth::render((DrumPattern::Track) t, (DrumSynth::Kit) kit, sr);
+                const int n = sound.getNumSamples();
+                const float peak = sound.getMagnitude(0, 0, n);
+                const float tail = sound.getMagnitude(0, n - 64, 64);
+                const float head = sound.getMagnitude(0, 0, juce::jmin(n, 2400));
+                bool finite = true;
+                for (int i = 0; i < n; ++i) finite = finite && std::isfinite(sound.getSample(0, i));
+
+                CHECK(finite && peak > 0.2f && peak <= 1.0f && tail < 0.01f && head > 0.5f * peak,
+                      "drum sound %s / %s: peak %.3f tail %.4f", DrumSynth::kitNames()[kit].toRawUTF8(),
+                      DrumPattern::trackNames()[t].toRawUTF8(), peak, tail);
+            }
+        std::printf("Drum synth: 3 kits x 8 sounds OK\n");
+    }
+
+    // 6. Заводские паттерны со всеми китами: без перегруза, уровень разумный
+    {
+        tempo.setBpm(140.0);
+        float worst = 0.0f;
+        double quietest = 0.0, loudest = -100.0;
+
+        for (int kit = 0; kit < 3; ++kit)
+            for (const auto& pattern : DrumLibrary::getFactoryPatterns())
+            {
+                DrumMachine drums;
+                drums.setPlayConfigDetails(2, 2, sr, block);
+                drums.prepareToPlay(sr, block);
+                drums.setKit((DrumSynth::Kit) kit);
+                drums.setPattern(pattern, true);
+                drums.setPlaying(true);
+
+                const auto out = run(drums, silence(3.5), block);
+                float peak = 0.0f;
+                CHECK(allFinite(out, 1.0f, &peak), "pattern %s kit %d clips (peak %.3f)", pattern.name.toRawUTF8(), kit, peak);
+                double e = 0; for (float v : out[0]) e += v * v;
+                const double rmsDb = 10.0 * std::log10(e / (double) out[0].size() + 1e-12);
+                worst = juce::jmax(worst, peak);
+                if (pattern.name != "Click") { quietest = juce::jmin(quietest, rmsDb); loudest = juce::jmax(loudest, rmsDb); }
+            }
+
+        std::printf("Drum patterns: max peak %.3f, RMS %.1f ... %.1f dB (default level -10 dB)\n", worst, quietest, loudest);
+        CHECK(worst < 1.0f && loudest < -9.0 && quietest > -40.0, "drum pattern levels");
+        tempo.setBpm(120.0);
+    }
+
+    // 7. Паттерн: текст, XML, библиотека
+    {
+        const auto& factory = DrumLibrary::getFactoryPatterns();
+        CHECK(factory.size() >= 14, "expected at least 14 factory drum patterns, got %d", (int) factory.size());
+
+        const auto djent = std::find_if(factory.begin(), factory.end(), [](const DrumPattern& p) { return p.name == "Djent Groove"; });
+        CHECK(djent != factory.end() && djent->length == 32 && djent->rowText(0).startsWith("X..x.x..x..X.x.."), "factory pattern parsing");
+
+        auto xml = djent->toXml();
+        const auto back = DrumPattern::fromXml(*xml);
+        CHECK(back.has_value() && *back == *djent, "pattern xml round trip");
+
+        const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("guitartx_patterns");
+        dir.deleteRecursively();
+        DrumLibrary library(dir);
+        auto mine = *djent; mine.name = "My Groove"; mine.swing = 20.0f;
+        CHECK(library.saveUserPattern(mine) && library.userPatternExists("My Groove"), "save user pattern");
+        const auto users = library.getUserPatterns();
+        CHECK(users.size() == 1 && users[0] == mine, "load user pattern");
+        CHECK(library.deleteUserPattern("My Groove") && library.getUserPatterns().empty(), "delete user pattern");
+        dir.deleteRecursively();
+        std::printf("Drum library: %d factory patterns, user save/load/delete OK\n", (int) factory.size());
+    }
+
+    // 8. Состояние сессии: кит, дорожки, сэмпл, паттерн, темп
+    {
+        tempo.setBpm(133.0);
+        std::unique_ptr<DrumMachine> drums; makeDrums(drums);
+        drums->setKit(DrumSynth::Kit::industrial);
+        drums->setLevelDb(-3.0f);
+        drums->getTrack(1).tune.store(-3.0f);
+        drums->getTrack(2).mute.store(true);
+        drums->getTrack(3).pan.store(40.0f);
+        drums->setPattern(DrumLibrary::getFactoryPatterns()[3], true);
+
+        const auto state = drums->createState();
+        tempo.setBpm(90.0);
+
+        DrumMachine other;
+        other.restoreState(*state);
+        const bool ok = other.getKit() == DrumSynth::Kit::industrial && std::abs(other.getLevelDb() + 3.0f) < 0.01f
+                     && std::abs(other.getTrack(1).tune.load() + 3.0f) < 0.01f && other.getTrack(2).mute.load()
+                     && std::abs(other.getTrack(3).pan.load() - 40.0f) < 0.01f && other.getSampleFile(0) == clickFile
+                     && other.getPattern() == DrumLibrary::getFactoryPatterns()[3] && std::abs(tempo.getBpm() - 133.0) < 0.01;
+        CHECK(ok, "drum state round trip");
+        tempo.setBpm(120.0);
+    }
+
+    // 9. Glitch Sync: доля 1/16 считается от общего темпа
+    {
+        tempo.setBpm(150.0);
+        GlitchProcessor g; g.setPlayConfigDetails(2, 2, sr, block);
+        setParam(g, "mode", 0); setParam(g, "bpm", 90); setParam(g, "sync", 1); setParam(g, "division", 4);
+        g.prepareToPlay(sr, block);
+
+        std::vector<float> in((size_t) sr / block * block, 0.0f);
+        in[500] = 1.0f;
+        const auto out = run(g, in, block);
+        std::vector<int> hits;
+        for (size_t i = 1; i < out[0].size(); ++i) if (std::abs(out[0][i]) > 0.5f) hits.push_back((int) i);
+
+        std::printf("Glitch sync @ 150 BPM: spacing %d (expected 4800)\n", hits.size() > 1 ? hits[1] - hits[0] : 0);
+        CHECK(hits.size() > 2 && hits[1] - hits[0] == 4800, "glitch sync");
+
+        g.setTempo(100.0);   // с Sync Tap меняет общий темп
+        CHECK(std::abs(tempo.getBpm() - 100.0) < 0.01, "glitch tap with sync sets global tempo");
+        tempo.setBpm(120.0);
+    }
+
+    // 10. MIDI: Drums play/stop и Tap tempo -> общий темп
+    {
+        AudioEngine engine;
+        MidiController midi(engine);
+        int toggles = 0;
+        midi.onToggleDrums = [&] { ++toggles; };
+
+        auto cc = [&](int controller, int value)
+        {
+            midi.postMessage(juce::MidiMessage::controllerEvent(1, controller, value));
+            midi.processPending();
+        };
+
+        midi.startLearn({ MidiController::Kind::drums, {}, {} });
+        cc(30, 127); cc(30, 0);
+        cc(30, 127); cc(30, 0);
+        cc(30, 127); cc(30, 0);
+
+        midi.startLearn({ MidiController::Kind::tapTempo, {}, {} });
+        cc(31, 127); cc(31, 0);
+
+        for (int i = 0; i < 3; ++i) { cc(31, 127); cc(31, 0); juce::Thread::sleep(400); }
+
+        std::printf("MIDI drums: %d toggles, tap tempo -> %.0f BPM\n", toggles, tempo.getBpm());
+        CHECK(toggles == 2 && std::abs(tempo.getBpm() - 150.0) < 8.0, "midi drums / tap tempo");
+        tempo.setBpm(120.0);
+    }
+
+    clickFile.deleteFile();
+}
+
 // Отметка этапа для CI: при падении процесса последняя отметка показывает, где
 static void stage(const char* name)
 {
@@ -1175,6 +1443,8 @@ int main()
     testPresetLibrary();
     stage("testGlitch");
     testGlitch();
+    stage("testDrums");
+    testDrums();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

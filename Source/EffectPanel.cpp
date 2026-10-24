@@ -753,7 +753,8 @@ GlitchPanel::GlitchPanel(GlitchProcessor& glitchToEdit)
         if (const auto bpm = tapTempo.tap(juce::Time::getMillisecondCounterHiRes()))
         {
             glitch.setTempo(*bpm);
-            tapLabel.setText(juce::String(juce::roundToInt(*bpm)) + " BPM", juce::dontSendNotification);
+            tapLabel.setText(juce::String(juce::roundToInt(*bpm)) + " BPM" + (glitch.isSynced() ? " (global tempo)" : ""),
+                             juce::dontSendNotification);
         }
         else
         {
@@ -763,7 +764,7 @@ GlitchPanel::GlitchPanel(GlitchProcessor& glitchToEdit)
     addAndMakeVisible(tapButton);
 
     tapLabel.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.6f));
-    tapLabel.setText("Stutter / Glitch follow BPM and Division", juce::dontSendNotification);
+    tapLabel.setText("Stutter / Glitch follow BPM and Division. Sync: use the global (drums) tempo", juce::dontSendNotification);
     addAndMakeVisible(tapLabel);
 }
 

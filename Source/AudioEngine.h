@@ -8,15 +8,18 @@
 #include "MeterProcessor.h"
 #include "TunerProcessor.h"
 #include "Recorder.h"
+#include "DrumMachine.h"
 
 // Аудиодвижок: устройство + граф обработки.
 //
 // Граф:
 //                                 +-> [основная цепочка] ---------+
-//   Input -> RecIn -> MeterIn -> Tuner -> InputGain +              +-> Master -> OutputGain -> Fade -> MeterOut -> RecOut -> Output
+//   Input -> RecIn -> MeterIn -> Tuner -> InputGain +              +-> Master -> Fade -> Drums -> OutputGain -> MeterOut -> RecOut -> Output
 //                                 +-> [параллельный эффект 1] ----+
 //                                 +-> [параллельный эффект 2] ----+
 //
+// Drums - драм-машина: барабаны добавляются к гитаре после мастер-секции и Fade
+// (перестройка цепочки при смене пресета их не прерывает).
 // RecIn / RecOut - рекордер: re-amp и запись DI в начале, запись Wet в самом конце.
 // Tuner - анализ высоты для тюнера и mute всего, что после него.
 // Основная цепочка - эффекты последовательно. Параллельная ветка - каждый эффект
@@ -93,6 +96,9 @@ public:
     // Рекордер DI + Wet и re-amp
     Recorder& getRecorder() noexcept { return recorder; }
 
+    // Драм-машина
+    DrumMachine& getDrums() noexcept { return *drums; }
+
     // Пики для индикаторов (линейные значения), с max-hold и сбросом
     float getAndResetInputPeak();
     float getAndResetOutputPeak();
@@ -134,13 +140,14 @@ private:
 
     Node::Ptr audioInputNode, audioOutputNode;
     Node::Ptr recorderInNode, recorderOutNode;
-    Node::Ptr meterInNode, tunerNode, gainNode, masterNode, outputGainNode, fadeNode, meterOutNode;
+    Node::Ptr meterInNode, tunerNode, gainNode, masterNode, drumsNode, outputGainNode, fadeNode, meterOutNode;
 
     MeterProcessor* meterIn  = nullptr;
     TunerProcessor* tuner    = nullptr;
     GainProcessor*  gain     = nullptr;
     GainProcessor*  outputGain = nullptr;
     MasterProcessor* master    = nullptr;
+    DrumMachine*    drums    = nullptr;
     FadeProcessor*  fade     = nullptr;
     MeterProcessor* meterOut = nullptr;
 

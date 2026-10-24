@@ -8,7 +8,7 @@
 
 cmake_minimum_required(VERSION 3.22)
 
-project(GuitarTX VERSION 0.3.3 LANGUAGES C CXX)
+project(GuitarTX VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -99,7 +99,7 @@ if(GUITARTX_BUILD_TESTS)
 
     # Всё, кроме окна приложения и UI-компонентов
     set(GUITARTX_TEST_SOURCES ${GUITARTX_SOURCES})
-    list(FILTER GUITARTX_TEST_SOURCES EXCLUDE REGEX "(Main|MainComponent|TunerComponent|EffectPanel|RackComponent|PresetBar|PresetBrowser|MidiWindow)\\.cpp$")
+    list(FILTER GUITARTX_TEST_SOURCES EXCLUDE REGEX "(Main|MainComponent|TunerComponent|EffectPanel|RackComponent|PresetBar|PresetBrowser|MidiWindow|DrumWindow)\\.cpp$")
 
     target_sources(GuitarTXTests PRIVATE
         ${GUITARTX_TEST_SOURCES}

@@ -13,6 +13,8 @@
 #include "TunerComponent.h"
 #include "MidiController.h"
 #include "MidiWindow.h"
+#include "DrumLibrary.h"
+#include "DrumWindow.h"
 
 //==============================================================================
 class MainComponent : public juce::Component,
@@ -62,6 +64,12 @@ private:
     void chooseReampFile();
     void updateRecordButton();
 
+    // Драм-машина
+    void setupDrums();
+    void showDrumWindow();
+    void toggleDrums();
+    void updateDrumButtons();
+
     // Snapshots A/B
     void setupSnapshots();
     void selectSnapshot(int index);
@@ -92,6 +100,8 @@ private:
     juce::TextButton midiButton  { "MIDI" };
     juce::TextButton recordButton { "REC" };
     juce::TextButton recordMenuButton;
+    juce::TextButton drumsButton { "DRUMS" };
+    juce::TextButton drumsPlayButton;
     std::unique_ptr<juce::FileChooser> reampChooser;
 
     // Кнопка с отдельной реакцией на правый клик (меню вместо нажатия)
@@ -138,6 +148,9 @@ private:
     // Поверх всего остального (добавляется последним)
     TunerComponent tuner { audioEngine.getTuner() };
 
+    DrumLibrary drumLibrary;
+    std::unique_ptr<DrumWindow> drumWindow;
+
     // MIDI: удаляется первым (колбэки ссылаются на UI выше)
     MidiController midi { audioEngine };
     std::unique_ptr<MidiWindow> midiWindow;
@@ -147,7 +160,7 @@ private:
     int transientTicks = 0;
     int learnTicks     = 0;
 
-    std::unique_ptr<juce::XmlElement> lastSavedRack, lastSavedSession;
+    std::unique_ptr<juce::XmlElement> lastSavedRack, lastSavedSession, lastSavedDrums;
     int saveTicks = 0;
     bool changingSelection = false;
 

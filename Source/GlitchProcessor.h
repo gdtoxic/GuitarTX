@@ -13,7 +13,7 @@
 //  Freeze  - удерживает звук бесконечно (зёрна из записанного фрагмента), играть можно поверх.
 //            После выключения плавно затухает за Fade
 //
-//  bpm, division - длина доли (1/2 ... 1/64, триоли)
+//  bpm, division - длина доли (1/2 ... 1/64, триоли); sync - вместо bpm общий темп (драм-машина)
 //  mix   - Stutter / Glitch: доля эффекта вместо сухого; Freeze: громкость удержанного звука
 //  fade  - Freeze: нарастание и затухание (мс)
 //  tone  - ФНЧ эффекта
@@ -37,7 +37,11 @@ public:
     static double divisionBeats(int divisionIndex) noexcept;
     static juce::StringArray divisionNames();
 
-    // Установить темп (Tap в панели, MIDI Tap tempo); message thread
+    // Sync: доли считаются от общего темпа (драм-машина), а не от своего BPM
+    bool   isSynced() const noexcept { return syncValue.load() > 0.5f; }
+    double getEffectiveBpm() const noexcept;
+
+    // Установить темп (Tap в панели, MIDI Tap tempo); с Sync - меняет общий темп. Message thread
     void setTempo(double beatsPerMinute);
 
     // Tap tempo: моменты нажатий (мс) -> BPM по среднему из последних интервалов
@@ -75,6 +79,7 @@ private:
 
     std::atomic<float>& modeChoice;
     std::atomic<float>& bpm;
+    std::atomic<float>& syncValue;
     std::atomic<float>& divisionChoice;
     std::atomic<float>& rampPercent;
     std::atomic<float>& chaosPercent;

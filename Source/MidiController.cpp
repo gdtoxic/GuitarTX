@@ -1,5 +1,6 @@
 #include "MidiController.h"
 #include "EffectRegistry.h"
+#include "GlobalTempo.h"
 
 namespace
 {
@@ -21,6 +22,7 @@ namespace
             case K::record:         return "record";
             case K::snapshot:       return "snapshot";
             case K::tapTempo:       return "tapTempo";
+            case K::drums:          return "drums";
         }
         return "parameter";
     }
@@ -28,7 +30,7 @@ namespace
     std::optional<MidiController::Kind> kindFromString(const juce::String& text)
     {
         using K = MidiController::Kind;
-        for (auto kind : { K::parameter, K::footswitch, K::nextPreset, K::previousPreset, K::tuner, K::record, K::snapshot, K::tapTempo })
+        for (auto kind : { K::parameter, K::footswitch, K::nextPreset, K::previousPreset, K::tuner, K::record, K::snapshot, K::tapTempo, K::drums })
             if (kindToString(kind) == text)
                 return kind;
         return std::nullopt;
@@ -234,6 +236,11 @@ void MidiController::applyController(int channel, int controller, int value)
                 if (newPress)
                     tapTempo();
                 break;
+
+            case Kind::drums:
+                if (newPress && onToggleDrums)
+                    onToggleDrums();
+                break;
         }
     }
 }
@@ -258,9 +265,11 @@ void MidiController::tapTempo()
     if (! bpm.has_value())
         return;
 
+    GlobalTempo::get().setBpm(*bpm);
+
     for (auto lane : { AudioEngine::Lane::main, AudioEngine::Lane::parallel })
         for (int i = 0; i < engine.getNumEffects(lane); ++i)
-            if (auto* glitch = dynamic_cast<GlitchProcessor*>(engine.getEffect(i, lane)))
+            if (auto* glitch = dynamic_cast<GlitchProcessor*>(engine.getEffect(i, lane)); glitch != nullptr && ! glitch->isSynced())
                 glitch->setTempo(*bpm);
 
     if (onTapTempo)
@@ -409,7 +418,8 @@ juce::String MidiController::describeTarget(const LearnTarget& target) const
         case Kind::tuner:          return "Tuner on/off";
         case Kind::record:         return "Record start/stop";
         case Kind::snapshot:       return "Snapshot A/B";
-        case Kind::tapTempo:       return "Tap tempo (Glitch)";
+        case Kind::tapTempo:       return "Tap tempo";
+        case Kind::drums:          return "Drums play/stop";
     }
 
     return {};

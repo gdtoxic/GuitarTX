@@ -940,6 +940,21 @@
     <ClCompile Include="..\..\Source\GlitchProcessor.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\Source\DrumPattern.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\DrumSynth.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\DrumMachine.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\DrumLibrary.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\DrumWindow.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Program Files\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.cpp">
       <Filter>JUCE Modules\juce_audio_basics\audio_play_head</Filter>
     </ClCompile>
@@ -4306,6 +4321,24 @@
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
     <ClInclude Include="..\..\Source\GlitchProcessor.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\DrumPattern.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\DrumSynth.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\DrumMachine.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\DrumLibrary.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\DrumWindow.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\GlobalTempo.h">
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
     <ClInclude Include="C:\Program Files\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.h">

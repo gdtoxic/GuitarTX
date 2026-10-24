@@ -13,7 +13,7 @@
 //    Hold / Latch - педаль включена, пока значение >= 64: с кнопкой без фиксации
 //    (momentary) это "держу - работает" (Stutter, Freeze), с фиксирующей - обычный вкл/выкл.
 //  - CC -> действие: следующий / предыдущий пресет, тюнер, запись, снапшот A/B,
-//    Tap tempo (BPM всех Glitch в цепочке).
+//    Tap tempo (общий темп + BPM всех Glitch без Sync), драм-машина Play / Stop.
 //  - Program Change N -> пресет N по общему списку (factory, затем user).
 //
 // MIDI приходит в отдельном потоке: сообщения кладутся в lock-free очередь,
@@ -22,7 +22,7 @@ class MidiController : private juce::MidiInputCallback,
                        private juce::Timer
 {
 public:
-    enum class Kind { parameter, footswitch, nextPreset, previousPreset, tuner, record, snapshot, tapTempo };
+    enum class Kind { parameter, footswitch, nextPreset, previousPreset, tuner, record, snapshot, tapTempo, drums };
     // Имена в XML сохранены для совместимости: momentary = Toggle, latching = Hold / Latch
     enum class SwitchMode { momentary, latching };
 
@@ -81,6 +81,7 @@ public:
     std::function<void()>                onToggleRecord;
     std::function<void()>                onToggleSnapshot;
     std::function<void(double bpm)>      onTapTempo;        // применённый темп
+    std::function<void()>                onToggleDrums;
     std::function<void(const Mapping&)>  onLearned;
     std::function<void()>                onMappingsChanged; // сохранить настройки
     std::function<void()>                onActivity;        // пришло сообщение

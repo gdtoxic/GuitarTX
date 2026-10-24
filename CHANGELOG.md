@@ -2,6 +2,24 @@
 
 All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
 
+## [0.4.0] - 2026-10-25
+
+### Added
+- **Drum machine** (DRUMS button, ▶ next to it plays / stops):
+  - 8 tracks: Kick, Snare, Closed Hat, Open Hat, Low Tom, High Tom, Crash, Metal (industrial anvil hit);
+  - synthesized kits **Doom** (big 808-style kick, roomy snare), **Metal** (tight clicky kick, dry crack snare)
+    and **Industrial** (driven kick, crushed snare); **your own WAV / AIFF / FLAC** on any track (▾ next to the track);
+  - per track: Mute, Level, Tune (±12 semitones), Decay, Pan; click on the track name to preview;
+  - step sequencer up to 32 steps, grid 1/16, 1/8T, 1/16T, 1/32; hit / accent / ghost notes, drag to paint, swing;
+  - 14 factory patterns: Click, Doom Half-Time, Doom March, Doom Shuffle, Double Bass, Thrash Skank, Blast Beat,
+    Breakdown, Djent Groove, Machine Gun, Industrial Stomp, Nu-Metal Bounce, Tribal Toms, Rock Basic;
+    your own patterns (Save... / Delete) in `%APPDATA%\GuitarTX\Patterns`;
+  - a new pattern picked while playing starts at the next bar; Closed Hat chokes Open Hat;
+  - drums bypass the guitar chain and the master compressor: they are in the output and in the Wet recording,
+    the DI stays dry; a preset change does not interrupt them. The drum state is saved with the session.
+- **Global tempo** 40–300 BPM with Tap (drum window). **Glitch: Sync** — divisions follow the global tempo.
+- MIDI: **Drums play / stop**; **Tap tempo** now sets the global tempo (and Glitch pedals without Sync).
+
 ## [0.3.3] - 2026-10-25
 
 ### Added

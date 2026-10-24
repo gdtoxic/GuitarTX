@@ -114,6 +114,7 @@ MainComponent::MainComponent()
 
     setupMidi();
     setupRecorder();
+    setupDrums();
     setupSnapshots();
 
     lastSavedRack    = audioEngine.createRackState();
@@ -154,6 +155,7 @@ MainComponent::~MainComponent()
 
     EffectPanel::setMidiLearnHost(nullptr);
     midiWindow.reset();
+    drumWindow.reset();
 
     panelViewport.setViewedComponent(nullptr, false);
     panel.reset();
@@ -369,6 +371,7 @@ void MainComponent::setupMidi()
         selectSnapshot(1 - audioEngine.getActiveSnapshot());
         showTransientStatus(juce::String("MIDI: snapshot ") + (audioEngine.getActiveSnapshot() == 0 ? "A" : "B"), 2.0);
     };
+    midi.onToggleDrums = [this] { toggleDrums(); };
     midi.onTapTempo = [this](double bpm)
     {
         showTransientStatus("MIDI: tap tempo " + juce::String(juce::roundToInt(bpm)) + " BPM", 2.0);
@@ -411,6 +414,66 @@ void MainComponent::setupRecorder()
     addAndMakeVisible(recordMenuButton);
 
     updateRecordButton();
+}
+
+//==============================================================================
+// Драм-машина
+void MainComponent::setupDrums()
+{
+    auto& drums = audioEngine.getDrums();
+
+    if (auto saved = settings.loadXml("drums"))
+        drums.restoreState(*saved);
+    else
+        drums.setPattern(DrumLibrary::getFactoryPatterns()[1], true);   // Doom Half-Time
+
+    lastSavedDrums = drums.createState();
+
+    drumsButton.setTooltip("Drum machine: patterns, kit, tempo");
+    drumsButton.onClick = [this] { showDrumWindow(); };
+    addAndMakeVisible(drumsButton);
+
+    drumsPlayButton.setTooltip("Drums play / stop");
+    drumsPlayButton.setColour(juce::TextButton::buttonOnColourId, GuitarTXLookAndFeel::accent);
+    drumsPlayButton.onClick = [this] { toggleDrums(); };
+    addAndMakeVisible(drumsPlayButton);
+
+    updateDrumButtons();
+}
+
+void MainComponent::showDrumWindow()
+{
+    if (drumWindow == nullptr)
+    {
+        drumWindow = std::make_unique<DrumWindow>(audioEngine.getDrums(), drumLibrary);
+        drumWindow->centreAroundComponent(this, drumWindow->getWidth(), drumWindow->getHeight());
+    }
+
+    drumWindow->refresh();
+    drumWindow->setVisible(true);
+    drumWindow->toFront(true);
+}
+
+void MainComponent::toggleDrums()
+{
+    auto& drums = audioEngine.getDrums();
+    drums.togglePlaying();
+    updateDrumButtons();
+
+    showTransientStatus(drums.isPlaying() ? "Drums: " + drums.getPattern().name + ", "
+                                              + juce::String(juce::roundToInt(GlobalTempo::get().getBpm())) + " BPM"
+                                          : juce::String("Drums stopped"), 2.0);
+}
+
+void MainComponent::updateDrumButtons()
+{
+    const bool playing = audioEngine.getDrums().isPlaying();
+    drumsPlayButton.setToggleState(playing, juce::dontSendNotification);
+
+    const auto text = playing ? juce::String::fromUTF8("\xe2\x96\xa0") : juce::String::fromUTF8("\xe2\x96\xb6");
+
+    if (drumsPlayButton.getButtonText() != text)
+        drumsPlayButton.setButtonText(text);
 }
 
 void MainComponent::saveRecorderSettings()
@@ -826,6 +889,14 @@ void MainComponent::saveStateIfChanged()
         lastSavedRack = std::move(rackState);
     }
 
+    auto drumState = audioEngine.getDrums().createState();
+
+    if (lastSavedDrums == nullptr || ! drumState->isEquivalentTo(lastSavedDrums.get(), false))
+    {
+        settings.saveXml("drums", drumState.get());
+        lastSavedDrums = std::move(drumState);
+    }
+
     auto session = createSessionState();
 
     if (lastSavedSession == nullptr || ! session->isEquivalentTo(lastSavedSession.get(), false))
@@ -933,6 +1004,7 @@ void MainComponent::timerCallback()
     outputMeter.setLevel(outputDisplay);
 
     updateMasterButton();
+    updateDrumButtons();
 
     // MIDI Learn: отмена, если за 15 с ничего не пришло
     if (midi.isLearning() && --learnTicks <= 0)
@@ -979,6 +1051,10 @@ void MainComponent::resized()
     tunerButton.setBounds(header.removeFromRight(90).reduced(0, 8));
     header.removeFromRight(8);
     midiButton.setBounds(header.removeFromRight(70).reduced(0, 8));
+    header.removeFromRight(8);
+    drumsPlayButton.setBounds(header.removeFromRight(30).reduced(0, 8));
+    header.removeFromRight(2);
+    drumsButton.setBounds(header.removeFromRight(76).reduced(0, 8));
     header.removeFromRight(8);
     recordMenuButton.setBounds(header.removeFromRight(24).reduced(0, 8));
     header.removeFromRight(2);
