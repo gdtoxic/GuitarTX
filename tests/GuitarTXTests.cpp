@@ -21,6 +21,7 @@
 #include "Recorder.h"
 #include "DistortionProcessor.h"
 #include "NoiseGateProcessor.h"
+#include "GlitchProcessor.h"
 #include <cstdio>
 #include <cstdlib>
 
@@ -653,7 +654,7 @@ static void testPresets()
     }
 
     std::printf("Presets: %d factory presets loaded, %d with snapshot B\n", factory, withSnapshots);
-    CHECK(factory >= 68, "expected at least 68 factory presets, got %d", factory);
+    CHECK(factory >= 74, "expected at least 74 factory presets, got %d", factory);
 }
 
 // LFO: Square с размахом -12 - половину цикла исходная высота, половину - октава вниз
@@ -1033,6 +1034,111 @@ static void testPresetLibrary()
     dir.deleteRecursively();
 }
 
+static float maxStep(const std::vector<float>& x, size_t from, size_t to)
+{
+    float m = 0.0f;
+    for (size_t i = from + 1; i < std::min(to, x.size()); ++i) m = std::max(m, std::abs(x[i] - x[i - 1]));
+    return m;
+}
+
+static void testGlitch()
+{
+    const double sr = 48000; const int block = 256;
+
+    // Stutter 1/16 @ 120 BPM = 6000 сэмплов: щелчок из первой доли повторяется ровно с этим шагом
+    {
+        GlitchProcessor g; g.setPlayConfigDetails(2, 2, sr, block);
+        setParam(g, "mode", 0); setParam(g, "bpm", 120); setParam(g, "division", 4); setParam(g, "mix", 100);
+        g.prepareToPlay(sr, block);
+
+        std::vector<float> in((size_t) (sr * 1.0) / block * block, 0.0f);
+        in[1000] = 1.0f;
+        const auto out = run(g, in, block);
+
+        std::vector<int> hits;
+        for (size_t i = 1; i < out[0].size(); ++i)
+            if (std::abs(out[0][i]) > 0.5f) hits.push_back((int) i);
+
+        bool spacing = hits.size() >= 6;
+        for (size_t k = 1; k < hits.size(); ++k) spacing = spacing && hits[k] - hits[k - 1] == 6000;
+        std::printf("Glitch stutter 1/16 @ 120: %zu hits, first %d, spacing %d\n", hits.size(),
+                    hits.empty() ? -1 : hits[0], hits.size() > 1 ? hits[1] - hits[0] : 0);
+        CHECK(spacing && hits[0] == 1000, "stutter timing");
+    }
+
+    // Stutter на синусе: без щелчков на границах повторов (шаг сигнала не больше, чем у самого синуса x2)
+    {
+        GlitchProcessor g; g.setPlayConfigDetails(2, 2, sr, block);
+        setParam(g, "mode", 0); setParam(g, "bpm", 137); setParam(g, "division", 5); setParam(g, "ramp", 40);
+        g.prepareToPlay(sr, block);
+
+        std::vector<float> in((size_t) (sr * 1.5) / block * block);
+        for (size_t i = 0; i < in.size(); ++i) in[i] = 0.5f * (float) std::sin(2.0 * juce::MathConstants<double>::pi * 220.0 * (double) i / sr);
+        const auto out = run(g, in, block);
+
+        const float sineStep = maxStep(in, 0, in.size());
+        const float outStep  = maxStep(out[0], 0, out[0].size());
+        std::printf("Glitch stutter click check: max step %.4f (sine %.4f)\n", outStep, sineStep);
+        CHECK(outStep < 2.0f * sineStep && allFinite(out, 2.0f), "stutter clicks");
+    }
+
+    // Freeze: держит звук после того, как гитара замолчала; после выключения затухает и выключается
+    {
+        GlitchProcessor g; g.setPlayConfigDetails(2, 2, sr, block);
+        setParam(g, "mode", 2); setParam(g, "mix", 100); setParam(g, "fade", 100);
+        g.prepareToPlay(sr, block);
+
+        const size_t n = (size_t) (sr * 6.0) / block * block;
+        std::vector<float> in(n, 0.0f);
+        for (size_t i = 0; i < (size_t) (sr * 0.6); ++i)
+            in[i] = 0.4f * (float) std::sin(2.0 * juce::MathConstants<double>::pi * 110.0 * (double) i / sr);
+
+        const auto off = (int) (sr * 3.0) / block * block;
+        const auto out = run(g, in, block, [&g, off](int start) { if (start == off) setParam(g, EffectBase::enabledParameterId, 0.0f); });
+
+        auto rms = [&out](double from, double to)
+        {
+            double e = 0; int c = 0;
+            for (size_t i = (size_t) (from * 48000); i < (size_t) (to * 48000); ++i) { e += out[0][i] * out[0][i]; ++c; }
+            return std::sqrt(e / c);
+        };
+
+        const double held = rms(1.5, 2.9), after = rms(4.5, 6.0);
+        const float  step = maxStep(out[0], (size_t) (sr * 0.7), (size_t) (sr * 2.9));
+        std::printf("Glitch freeze: held RMS %.3f (input 0.283), after release %.2e, max step %.4f\n", held, after, step);
+        CHECK(held > 0.12 && after < 1.0e-4 && step < 0.05f && allFinite(out, 2.0f), "freeze sustain / release");
+    }
+
+    // Glitch: детерминированно, конечно, без щелчков, звук действительно меняется
+    {
+        GlitchProcessor g; g.setPlayConfigDetails(2, 2, sr, block);
+        setParam(g, "mode", 1); setParam(g, "bpm", 140); setParam(g, "division", 4); setParam(g, "chaos", 80);
+        g.prepareToPlay(sr, block);
+
+        std::vector<float> in((size_t) (sr * 3.0) / block * block);
+        for (size_t i = 0; i < in.size(); ++i)
+            in[i] = 0.4f * (float) std::sin(2.0 * juce::MathConstants<double>::pi * (110.0 + 40.0 * (double) i / sr) * (double) i / sr);
+        const auto out = run(g, in, block);
+
+        double diff = 0;
+        for (size_t i = 0; i < in.size(); ++i) diff += std::abs(out[0][i] - in[i]);
+        const float sineStep = maxStep(in, 0, in.size());
+        const float outStep  = maxStep(out[0], 0, out[0].size());
+        std::printf("Glitch glitch: mean |out-in| %.3f, max step %.4f (input %.4f)\n", diff / (double) in.size(), outStep, sineStep);
+        CHECK(diff / (double) in.size() > 0.02 && outStep < 3.0f * sineStep && allFinite(out, 2.0f), "glitch mode");
+    }
+
+    // Tap tempo: 4 нажатия по 500 мс = 120 BPM, пауза больше 2 с начинает заново
+    {
+        GlitchProcessor::TapTempo tap;
+        std::optional<double> result;
+        for (double t : { 0.0, 500.0, 1000.0, 1500.0 }) result = tap.tap(t);
+        const auto restarted = tap.tap(5000.0);
+        std::printf("Tap tempo: %.1f BPM, after pause %s\n", result.value_or(0.0), restarted.has_value() ? "value" : "none");
+        CHECK(result.has_value() && std::abs(*result - 120.0) < 0.01 && ! restarted.has_value(), "tap tempo");
+    }
+}
+
 // Отметка этапа для CI: при падении процесса последняя отметка показывает, где
 static void stage(const char* name)
 {
@@ -1067,6 +1173,8 @@ int main()
     testRecorder();
     stage("testPresetLibrary");
     testPresetLibrary();
+    stage("testGlitch");
+    testGlitch();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

@@ -2,15 +2,18 @@
 
 #include <JuceHeader.h>
 #include "AudioEngine.h"
+#include "GlitchProcessor.h"
 
 // MIDI-управление: педаль экспрессии, футсвитчи, смена пресетов.
 //
 //  - CC -> параметр эффекта (MIDI Learn). Привязка - к ТИПУ эффекта и параметру,
 //    а не к пресету: педаль на "Pitch: Position" работает в любом пресете,
 //    где есть Pitch (берётся первый такой эффект в цепочке).
-//  - CC -> вкл/выкл педали (футсвитч): Momentary - каждое нажатие переключает,
-//    Latching - значение >= 64 включает, < 64 выключает.
-//  - CC -> действие: следующий / предыдущий пресет, тюнер, запись, снапшот A/B.
+//  - CC -> вкл/выкл педали (футсвитч): Toggle - каждое нажатие переключает,
+//    Hold / Latch - педаль включена, пока значение >= 64: с кнопкой без фиксации
+//    (momentary) это "держу - работает" (Stutter, Freeze), с фиксирующей - обычный вкл/выкл.
+//  - CC -> действие: следующий / предыдущий пресет, тюнер, запись, снапшот A/B,
+//    Tap tempo (BPM всех Glitch в цепочке).
 //  - Program Change N -> пресет N по общему списку (factory, затем user).
 //
 // MIDI приходит в отдельном потоке: сообщения кладутся в lock-free очередь,
@@ -19,7 +22,8 @@ class MidiController : private juce::MidiInputCallback,
                        private juce::Timer
 {
 public:
-    enum class Kind { parameter, footswitch, nextPreset, previousPreset, tuner, record, snapshot };
+    enum class Kind { parameter, footswitch, nextPreset, previousPreset, tuner, record, snapshot, tapTempo };
+    // Имена в XML сохранены для совместимости: momentary = Toggle, latching = Hold / Latch
     enum class SwitchMode { momentary, latching };
 
     struct Mapping
@@ -76,6 +80,7 @@ public:
     std::function<void()>                onToggleTuner;
     std::function<void()>                onToggleRecord;
     std::function<void()>                onToggleSnapshot;
+    std::function<void(double bpm)>      onTapTempo;        // применённый темп
     std::function<void(const Mapping&)>  onLearned;
     std::function<void()>                onMappingsChanged; // сохранить настройки
     std::function<void()>                onActivity;        // пришло сообщение
@@ -93,6 +98,7 @@ private:
     void learn(int channel, int controller);
 
     EffectBase* findEffect(const juce::String& effectType) const;
+    void tapTempo();
 
     // Lock-free очередь MIDI -> message thread (сообщения CC/PC - 3 байта)
     struct RawMessage
@@ -115,6 +121,8 @@ private:
     std::array<int, 128> lastValues {};
 
     juce::String lastMessageText;
+
+    GlitchProcessor::TapTempo tapTempoState;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiController)
 };

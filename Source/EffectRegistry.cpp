@@ -10,6 +10,7 @@
 #include "DelayProcessor.h"
 #include "ReverbProcessor.h"
 #include "EqProcessor.h"
+#include "GlitchProcessor.h"
 
 namespace
 {
@@ -36,6 +37,7 @@ const std::vector<EffectDescriptor>& EffectRegistry::getAll()
         describe<ReverbProcessor>   ("Reverb (room / plate / hall)"),
         describe<EqProcessor>       ("EQ (parametric)"),
         describe<ChaosProcessor>    ("Chaos (fuzz / crush / ring)"),
+        describe<GlitchProcessor>   ("Glitch (stutter / glitch / freeze)"),
         describe<SubProcessor>      ("Sub 808", true),
     };
 

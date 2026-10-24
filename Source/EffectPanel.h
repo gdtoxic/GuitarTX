@@ -5,6 +5,7 @@
 #include "CabinetProcessor.h"
 #include "ToneMatchProcessor.h"
 #include "EqProcessor.h"
+#include "GlitchProcessor.h"
 
 // Куда панель отправляет правый клик по ручке (MIDI Learn).
 // parameterId пустой - вкл/выкл самой педали (футсвитч).
@@ -152,6 +153,25 @@ private:
     std::unique_ptr<CurveView> curve;
     juce::TextButton prevCurveButton { "<" }, curveButton, nextCurveButton { ">" };
     int lastCurveIndex = 0;   // от неё шагают стрелки, если ручки уже покрутили (Custom)
+};
+
+//==============================================================================
+// Glitch: Tap tempo (среднее по последним нажатиям, пауза > 2 с начинает заново)
+class GlitchPanel : public EffectPanel
+{
+public:
+    explicit GlitchPanel(GlitchProcessor& glitchToEdit);
+
+protected:
+    int  getExtraHeight() const override { return 36; }
+    void layoutExtra(juce::Rectangle<int> area) override;
+
+private:
+    GlitchProcessor& glitch;
+    GlitchProcessor::TapTempo tapTempo;
+
+    juce::TextButton tapButton { "Tap" };
+    juce::Label      tapLabel;
 };
 
 //==============================================================================

@@ -742,8 +742,45 @@ void EqPanel::resized()
     curve->setBounds(free);
 }
 
+//==============================================================================
+GlitchPanel::GlitchPanel(GlitchProcessor& glitchToEdit)
+    : EffectPanel(glitchToEdit),
+      glitch(glitchToEdit)
+{
+    tapButton.setTooltip("Tap the beat: 2+ taps set BPM (MIDI: Tap tempo)");
+    tapButton.onClick = [this]
+    {
+        if (const auto bpm = tapTempo.tap(juce::Time::getMillisecondCounterHiRes()))
+        {
+            glitch.setTempo(*bpm);
+            tapLabel.setText(juce::String(juce::roundToInt(*bpm)) + " BPM", juce::dontSendNotification);
+        }
+        else
+        {
+            tapLabel.setText("tap again...", juce::dontSendNotification);
+        }
+    };
+    addAndMakeVisible(tapButton);
+
+    tapLabel.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.6f));
+    tapLabel.setText("Stutter / Glitch follow BPM and Division", juce::dontSendNotification);
+    addAndMakeVisible(tapLabel);
+}
+
+void GlitchPanel::layoutExtra(juce::Rectangle<int> area)
+{
+    area = area.reduced(0, 4);
+
+    tapButton.setBounds(area.removeFromLeft(80));
+    area.removeFromLeft(10);
+    tapLabel.setBounds(area);
+}
+
 std::unique_ptr<EffectPanel> createEffectPanel(EffectBase& effect)
 {
+    if (auto* glitch = dynamic_cast<GlitchProcessor*>(&effect))
+        return std::make_unique<GlitchPanel>(*glitch);
+
     if (auto* cabinet = dynamic_cast<CabinetProcessor*>(&effect))
         return std::make_unique<CabinetPanel>(*cabinet);
 

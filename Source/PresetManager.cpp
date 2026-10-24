@@ -8,6 +8,7 @@
 #include "ToneMatchProcessor.h"
 #include "PitchProcessor.h"
 #include "DelayProcessor.h"
+#include "GlitchProcessor.h"
 #include "ReverbProcessor.h"
 #include "EqProcessor.h"
 #include "EffectRegistry.h"
@@ -161,7 +162,7 @@ namespace
                                                  { "highFreq", 4000.0f }, { "highGain", -2.0f }, { "highcut", 7500.0f } } },
                 { ReverbProcessor::typeId,     { { "mode", 0.0f }, { "decay", 1.0f }, { "mix", 10.0f } } } } },
 
-            // Стена дрона: без гейта, длинный саб на 2 октавы ниже, тёмный зал
+            // Стена дрона: без гейта, длинный саб на 2 октавы ниже, тёмный зал; B: Freeze держит аккорд
             { "Drone Wall", "Doom",
               { { DistortionProcessor::typeId, { { "gain", 52.0f }, { "tight", 50.0f }, { "bass", 6.0f },
                                                  { "mid", 0.0f }, { "treble", -4.0f }, { "presence", -4.0f },
@@ -169,6 +170,8 @@ namespace
                 { CabinetProcessor::typeId,    {} },
                 { EqProcessor::typeId,         { { "lowcut", 30.0f }, { "lowFreq", 70.0f }, { "lowGain", 3.0f },
                                                  { "mid1Freq", 400.0f }, { "mid1Gain", -2.0f }, { "highcut", 7000.0f } } },
+                { GlitchProcessor::typeId, { { EffectBase::enabledParameterId, 0.0f }, { "mode", 2.0f }, { "mix", 70.0f }, { "fade", 1200.0f }, { "tone", 5000.0f } },
+                  false, { { EffectBase::enabledParameterId, 1.0f } } },
                 { ReverbProcessor::typeId,     { { "mode", 2.0f }, { "decay", 6.0f }, { "size", 80.0f },
                                                  { "damping", 4000.0f }, { "mix", 25.0f } } },
                 { SubProcessor::typeId,        { { "mode", 0.0f }, { "octave", -2.0f }, { "level", -14.0f },
@@ -205,6 +208,20 @@ namespace
                                                  { "mid2Freq", 1800.0f }, { "mid2Gain", 2.0f }, { "highcut", 8500.0f } } } } },
 
             // Лид Doom с длинным залом и повторами, которые не мешают нотам
+            // Дум-рифф; B: Freeze держит последний аккорд дроном под риффом
+            { "Doom Freeze", "Doom",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -50.0f }, { "hold", 15.0f }, { "release", 30.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 3.0f }, { "tone", 70.0f }, { "level", 0.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 44.0f }, { "tight", 180.0f }, { "bass", 3.0f },
+                                                 { "mid", -5.0f }, { "treble", 3.0f }, { "presence", 4.0f },
+                                                 { "level", -15.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 60.0f }, { "lowFreq", 110.0f }, { "lowGain", 1.0f },
+                                                 { "mid1Freq", 350.0f }, { "mid1Gain", -3.0f },
+                                                 { "mid2Freq", 2200.0f }, { "mid2Gain", 2.0f }, { "highcut", 9000.0f } } },
+                { GlitchProcessor::typeId, { { EffectBase::enabledParameterId, 0.0f }, { "mode", 2.0f }, { "mix", 65.0f }, { "fade", 600.0f }, { "tone", 4500.0f } },
+                  false, { { EffectBase::enabledParameterId, 1.0f } } },
+                { ReverbProcessor::typeId, { { "mode", 2.0f }, { "decay", 3.5f }, { "predelay", 30.0f }, { "mix", 14.0f }, { "duck", 6.0f } } } } },
             { "Doom Hall Lead", "Doom",
               { { NoiseGateProcessor::typeId, { { "threshold", -62.0f }, { "release", 150.0f } } },
                 { OverdriveProcessor::typeId, { { "drive", 6.0f }, { "tone", 65.0f }, { "level", 0.0f } } },
@@ -479,15 +496,61 @@ namespace
                 { ReverbProcessor::typeId, { { "mode", 1.0f }, { "decay", 2.5f }, { "predelay", 10.0f }, { "size", 60.0f }, { "damping", 5000.0f }, { "lowcut", 200.0f }, { "mod", 40.0f }, { "mix", 28.0f }, { "duck", 0.0f } } } },
               { { "threshold", -24.0f }, { "ratio", 3.0f }, { "attack", 10.0f }, { "release", 150.0f }, { "makeup", 5.0f } } },
 
-            // Тяжёлый стомп: квадратный саб + фузз-хаос под гитарой
+            // Тяжёлый стомп: квадратный саб + фузз-хаос под гитарой; B: статтер 1/16 с разгоном
             { "Stomp Sub", "Industrial",
               { { NoiseGateProcessor::typeId, { { "threshold", -48.0f }, { "hold", 12.0f }, { "release", 20.0f } } },
                 { DistortionProcessor::typeId, { { "gain", 44.0f }, { "tight", 180.0f }, { "bass", 2.0f }, { "mid", -5.0f }, { "treble", 3.0f }, { "presence", 4.0f }, { "level", -15.0f } } },
                 { CabinetProcessor::typeId, {  } },
                 { EqProcessor::typeId, { { "lowcut", 80.0f }, { "lowFreq", 120.0f }, { "lowGain", -1.0f }, { "mid1Freq", 400.0f }, { "mid1Gain", -3.0f }, { "mid1Q", 1.2f }, { "mid2Freq", 2500.0f }, { "mid2Gain", 1.5f }, { "highcut", 9000.0f } } },
+                { GlitchProcessor::typeId, { { EffectBase::enabledParameterId, 0.0f }, { "mode", 0.0f }, { "bpm", 130.0f }, { "division", 4.0f }, { "ramp", 35.0f } },
+                  false, { { EffectBase::enabledParameterId, 1.0f } } },
                 { SubProcessor::typeId, { { "mode", 1.0f }, { "octave", -1.0f }, { "level", -12.0f }, { "drive", 70.0f }, { "tone", 150.0f }, { "punch", 4.0f }, { "decay", 300.0f }, { "threshold", -48.0f }, { "glide", 15.0f } }, true },
                 { ChaosProcessor::typeId, { { "fuzz", 50.0f }, { "bits", 4.0f }, { "rate", 8.0f }, { "ring", 110.0f }, { "ringMix", 20.0f }, { "gate", -34.0f }, { "level", -28.0f } }, true } },
               { { "threshold", -18.0f }, { "ratio", 5.0f }, { "attack", 5.0f }, { "release", 100.0f }, { "makeup", 4.0f } } },
+
+            // Статтер-брейкдаун: тугой ритм; B (или футсвитч Hold) - повтор 1/16 с разгоном, как в саундтреке Doom
+            { "Stutter Breakdown", "Industrial",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -50.0f }, { "hold", 15.0f }, { "release", 30.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 3.0f }, { "tone", 70.0f }, { "level", 0.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 44.0f }, { "tight", 180.0f }, { "bass", 3.0f },
+                                                 { "mid", -5.0f }, { "treble", 3.0f }, { "presence", 4.0f },
+                                                 { "level", -15.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 60.0f }, { "lowFreq", 110.0f }, { "lowGain", 1.0f },
+                                                 { "mid1Freq", 350.0f }, { "mid1Gain", -3.0f },
+                                                 { "mid2Freq", 2200.0f }, { "mid2Gain", 2.0f }, { "highcut", 9000.0f } } },
+                { GlitchProcessor::typeId, { { EffectBase::enabledParameterId, 0.0f }, { "mode", 0.0f }, { "bpm", 120.0f }, { "division", 4.0f }, { "ramp", 50.0f } },
+                  false, { { EffectBase::enabledParameterId, 1.0f } } },
+                { SubProcessor::typeId, { { "mode", 0.0f }, { "octave", -1.0f }, { "level", -14.0f }, { "drive", 40.0f }, { "tone", 110.0f }, { "punch", 5.0f }, { "decay", 300.0f }, { "threshold", -46.0f } }, true } },
+              { { "threshold", -18.0f }, { "ratio", 5.0f }, { "attack", 4.0f }, { "release", 90.0f }, { "makeup", 4.0f } } },
+
+            // Машина глитча: каждая 1/16 - повтор, реверс, дробление или октава; B: 1/32 и максимум хаоса
+            { "Glitch Machine", "Industrial",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -50.0f }, { "hold", 15.0f }, { "release", 30.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 3.0f }, { "tone", 70.0f }, { "level", 0.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 44.0f }, { "tight", 180.0f }, { "bass", 3.0f },
+                                                 { "mid", -5.0f }, { "treble", 3.0f }, { "presence", 4.0f },
+                                                 { "level", -15.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 60.0f }, { "lowFreq", 110.0f }, { "lowGain", 1.0f },
+                                                 { "mid1Freq", 350.0f }, { "mid1Gain", -3.0f },
+                                                 { "mid2Freq", 2200.0f }, { "mid2Gain", 2.0f }, { "highcut", 9000.0f } } },
+                { GlitchProcessor::typeId, { { "mode", 1.0f }, { "bpm", 140.0f }, { "division", 4.0f }, { "chaos", 55.0f }, { "level", 1.5f } },
+                  false, { { "division", 6.0f }, { "chaos", 95.0f } } },
+                { ChaosProcessor::typeId, { { "fuzz", 30.0f }, { "bits", 7.0f }, { "rate", 3.0f }, { "ring", 220.0f }, { "ringMix", 0.0f }, { "gate", -40.0f }, { "level", -28.0f } }, true } },
+              { { "threshold", -18.0f }, { "ratio", 5.0f }, { "attack", 4.0f }, { "release", 90.0f }, { "makeup", 4.0f } } },
+
+            // Чистая подложка: B замораживает аккорд в бесконечный пэд, мелодия - поверх
+            { "Freeze Pad", "Industrial",
+              { { NoiseGateProcessor::typeId, { { "threshold", -70.0f }, { "release", 200.0f } } },
+                { OverdriveProcessor::typeId, { { "drive", 4.0f }, { "tone", 80.0f }, { "level", 0.0f } } },
+                { CabinetProcessor::typeId, { { "level", 9.0f } } },
+                { EqProcessor::typeId, { { "lowcut", 90.0f }, { "mid1Freq", 400.0f }, { "mid1Gain", -2.0f }, { "highFreq", 5000.0f }, { "highGain", 2.0f }, { "highcut", 14000.0f } } },
+                { GlitchProcessor::typeId, { { EffectBase::enabledParameterId, 0.0f }, { "mode", 2.0f }, { "mix", 60.0f }, { "fade", 1500.0f }, { "tone", 6000.0f } },
+                  false, { { EffectBase::enabledParameterId, 1.0f } } },
+                { DelayProcessor::typeId, { { "mode", 2.0f }, { "time", 375.0f }, { "feedback", 40.0f }, { "mix", 22.0f }, { "tone", 5000.0f }, { "lowcut", 200.0f }, { "mod", 15.0f } } },
+                { ReverbProcessor::typeId, { { "mode", 2.0f }, { "decay", 5.0f }, { "predelay", 30.0f }, { "size", 75.0f }, { "damping", 5000.0f }, { "lowcut", 200.0f }, { "mod", 40.0f }, { "mix", 30.0f } } } },
+              { { "threshold", -24.0f }, { "ratio", 3.0f }, { "attack", 10.0f }, { "release", 150.0f }, { "makeup", 5.0f } } },
 
             // ===== Extreme =====================================================
             // Блэк: тонкий жужжащий перегруз, холодный зал; B: атмосферная часть - лента и огромный зал
@@ -531,13 +594,16 @@ namespace
                 { DelayProcessor::typeId, { { "mode", 1.0f }, { "time", 500.0f }, { "feedback", 40.0f }, { "mix", 25.0f }, { "tone", 5000.0f }, { "lowcut", 250.0f }, { "mod", 30.0f }, { "duck", 4.0f } } },
                 { ReverbProcessor::typeId, { { "mode", 2.0f }, { "decay", 8.0f }, { "predelay", 50.0f }, { "size", 80.0f }, { "damping", 5500.0f }, { "lowcut", 250.0f }, { "mod", 60.0f }, { "mix", 45.0f }, { "duck", 4.0f } } } } },
 
-            // Похоронный дум: медленно, октава вниз в смеси, длинные тёмные повторы и бесконечный зал
+            // Похоронный дум: медленно, октава вниз в смеси, длинные тёмные повторы и бесконечный зал;
+            // B: Freeze - удержанный аккорд под медленным риффом
             { "Funeral Doom", "Extreme",
               { { NoiseGateProcessor::typeId, { { "threshold", -66.0f }, { "release", 300.0f } } },
                 { PitchProcessor::typeId, { { "shift", -12.0f }, { "mode", 0.0f }, { "mix", 35.0f }, { "tone", 2500.0f }, { "level", 0.0f }, { "time", 250.0f }, { "sens", -45.0f } } },
                 { DistortionProcessor::typeId, { { "gain", 48.0f }, { "tight", 50.0f }, { "bass", 6.0f }, { "mid", 0.0f }, { "treble", -3.0f }, { "presence", -3.0f }, { "level", -16.5f } } },
                 { CabinetProcessor::typeId, {  } },
                 { EqProcessor::typeId, { { "lowcut", 30.0f }, { "lowFreq", 70.0f }, { "lowGain", 3.0f }, { "mid1Freq", 250.0f }, { "mid1Gain", -3.0f }, { "highcut", 7000.0f } } },
+                { GlitchProcessor::typeId, { { EffectBase::enabledParameterId, 0.0f }, { "mode", 2.0f }, { "mix", 55.0f }, { "fade", 2000.0f }, { "tone", 4000.0f } },
+                  false, { { EffectBase::enabledParameterId, 1.0f } } },
                 { DelayProcessor::typeId, { { "mode", 1.0f }, { "time", 800.0f }, { "feedback", 40.0f }, { "mix", 16.0f }, { "tone", 3000.0f }, { "mod", 30.0f } } },
                 { ReverbProcessor::typeId, { { "mode", 2.0f }, { "decay", 9.0f }, { "predelay", 60.0f }, { "size", 80.0f }, { "damping", 4500.0f }, { "lowcut", 150.0f }, { "mod", 40.0f }, { "mix", 35.0f }, { "duck", 0.0f } } } } },
 
@@ -821,7 +887,7 @@ namespace
                 { DelayProcessor::typeId,      { { "mode", 1.0f }, { "time", 520.0f }, { "feedback", 55.0f },
                                                  { "mix", 30.0f }, { "mod", 70.0f } } } } },
 
-            // Лестница глитчей: случайные шаги вниз + биткраш в "телефоне"
+            // Лестница глитчей: случайные шаги вниз + биткраш в "телефоне"; B: полный диапазон + нарезка Glitch
             { "Glitch Stairs", "Insane",
               { { NoiseGateProcessor::typeId,  { { "threshold", -50.0f }, { "hold", 10.0f }, { "release", 25.0f } } },
                 { PitchProcessor::typeId,      { { "shift", 0.0f }, { "mode", 0.0f }, { "mix", 100.0f }, { "tone", 9000.0f },
@@ -833,6 +899,8 @@ namespace
                 { EqProcessor::typeId,         { { "lowcut", 300.0f }, { "mid2Freq", 1500.0f }, { "mid2Gain", 5.0f },
                                                  { "highcut", 4500.0f }, { "level", 3.0f } },
                   false, { { "lowcut", 20.0f }, { "mid2Gain", 0.0f }, { "highcut", 20000.0f }, { "level", 0.0f } } },
+                { GlitchProcessor::typeId, { { EffectBase::enabledParameterId, 0.0f }, { "mode", 1.0f }, { "bpm", 140.0f }, { "division", 4.0f }, { "chaos", 60.0f } },
+                  false, { { EffectBase::enabledParameterId, 1.0f } } },
                 { ChaosProcessor::typeId,      { { "fuzz", 45.0f }, { "bits", 4.0f }, { "rate", 12.0f },
                                                  { "ring", 220.0f }, { "ringMix", 20.0f }, { "gate", -38.0f },
                                                  { "level", -24.0f } }, true } } },
@@ -935,6 +1003,33 @@ namespace
                   false, { { "decay", 20.0f }, { "mix", 55.0f } } } },
               { { "threshold", -22.0f }, { "ratio", 4.0f }, { "attack", 20.0f }, { "release", 250.0f }, { "makeup", 3.0f } } },
 
+            // Пулемётный лид: B - нота дробится в 1/32 и разгоняется до гула
+            { "Stutter Lead", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -62.0f }, { "release", 150.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 5.0f }, { "tone", 65.0f }, { "level", 0.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 46.0f }, { "tight", 100.0f }, { "bass", 1.0f },
+                                                 { "mid", 2.0f }, { "treble", 3.0f }, { "presence", 2.0f },
+                                                 { "level", -14.5f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 90.0f }, { "mid1Freq", 800.0f }, { "mid1Gain", 3.0f },
+                                                 { "mid1Q", 0.8f }, { "highcut", 8000.0f } } },
+                { GlitchProcessor::typeId, { { EffectBase::enabledParameterId, 0.0f }, { "mode", 0.0f }, { "bpm", 150.0f }, { "division", 6.0f }, { "ramp", 70.0f } },
+                  false, { { EffectBase::enabledParameterId, 1.0f } } },
+                { DelayProcessor::typeId,      { { "time", 400.0f }, { "feedback", 30.0f }, { "mix", 16.0f }, { "duck", 12.0f } } },
+                { ReverbProcessor::typeId,     { { "mode", 1.0f }, { "decay", 1.6f }, { "mix", 12.0f }, { "duck", 4.0f } } } } },
+
+            // Зажёванная лента: глитч по восьмым с максимумом хаоса, тёмный тон, ленточный дилей; B: 1/16T
+            { "Broken Tape", "Insane",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -52.0f }, { "hold", 10.0f }, { "release", 40.0f } } },
+                { DistortionProcessor::typeId, { { "gain", 40.0f }, { "tight", 150.0f }, { "bass", 2.0f },
+                                                 { "mid", 0.0f }, { "treble", 1.0f }, { "presence", 2.0f },
+                                                 { "level", -14.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { EqProcessor::typeId,         { { "lowcut", 120.0f }, { "mid1Freq", 900.0f }, { "mid1Gain", 3.0f }, { "highcut", 6000.0f } } },
+                { GlitchProcessor::typeId, { { "mode", 1.0f }, { "bpm", 110.0f }, { "division", 2.0f }, { "chaos", 100.0f }, { "tone", 7000.0f } },
+                  false, { { "division", 5.0f } } },
+                { DelayProcessor::typeId,      { { "mode", 1.0f }, { "time", 330.0f }, { "feedback", 45.0f }, { "mix", 25.0f }, { "mod", 60.0f }, { "tone", 3500.0f } } } } },
+
             // ===== Utility =====================================================
             // Заготовка под Tone Match: Load reference -> Learn my tone
             { "Tone Match Template", "Utility",
@@ -955,6 +1050,7 @@ namespace
                 { EqProcessor::typeId,         { { EffectBase::enabledParameterId, 0.0f } } },
                 { ToneMatchProcessor::typeId,  { { EffectBase::enabledParameterId, 0.0f } } },
                 { PitchProcessor::typeId,      { { EffectBase::enabledParameterId, 0.0f } } },
+                { GlitchProcessor::typeId,     { { EffectBase::enabledParameterId, 0.0f } } },
                 { DelayProcessor::typeId,      { { EffectBase::enabledParameterId, 0.0f } } },
                 { ReverbProcessor::typeId,     { { EffectBase::enabledParameterId, 0.0f } } },
                 { SubProcessor::typeId,        { { EffectBase::enabledParameterId, 0.0f } }, true },

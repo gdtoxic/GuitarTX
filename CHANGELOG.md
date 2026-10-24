@@ -2,6 +2,28 @@
 
 All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
 
+## [0.3.3] - 2026-10-25
+
+### Added
+- **Glitch** pedal (stutter / glitch / freeze) for noise breaks:
+  - **Stutter** — the first beat plays and is recorded, then repeats on the grid while the pedal is on;
+    **Ramp** makes every repeat shorter (the "speed-up" before a break);
+  - **Glitch** — every grid step gets a random action: repeat, reverse, half / quarter slicing, octave up,
+    drop or live; **Chaos** sets how often and how wild;
+  - **Freeze** — holds the sound endlessly (grains from a captured fragment), you play on top; after switching off
+    it fades out over **Fade**; switching on again while it still sounds grabs a new chord;
+  - **BPM** 40–240 with a **Tap** button, **Division** 1/2 … 1/64 incl. triplets, **Mix**, **Tone** (low-pass on the
+    effect), **Level**; repeats are exactly on the grid, edges are crossfaded (no clicks).
+- **MIDI Tap tempo**: a CC button that taps the BPM of every Glitch in the chain (Learn: Tap tempo).
+- **6 new factory presets with Glitch** (74 in total): Doom Freeze, Stutter Breakdown, Glitch Machine, Freeze Pad,
+  Stutter Lead, Broken Tape; Glitch on snapshot B in Drone Wall and Funeral Doom (Freeze), Stomp Sub (stutter),
+  Glitch Stairs (glitch slicing). Full Rig gets a Glitch pedal (off). 39 factory presets now have A/B.
+
+### Changed
+- Footswitch modes renamed: **Toggle** (each press switches) and **Hold / Latch** (on while the CC is ≥ 64:
+  with a momentary switch it is "hold to stutter / freeze", with a latching one a normal on/off).
+  Saved MIDI settings keep working.
+
 ## [0.3.2] - 2026-10-22
 
 ### Added

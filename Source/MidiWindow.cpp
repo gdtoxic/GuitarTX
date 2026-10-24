@@ -46,6 +46,7 @@ public:
                                                            ? MidiController::SwitchMode::latching
                                                            : MidiController::SwitchMode::momentary);
         };
+        modeButton.setTooltip("Footswitch mode. Toggle: each press switches the pedal. Hold / Latch: on while CC >= 64 (hold a momentary switch for Stutter / Freeze)");
         addAndMakeVisible(modeButton);
 
         clearButton.onClick = [this] { controller.clearMappings(); };
@@ -66,6 +67,7 @@ public:
         setupLearn(learnTuner, MidiController::Kind::tuner);
         setupLearn(learnRecord, MidiController::Kind::record);
         setupLearn(learnSnapshot, MidiController::Kind::snapshot);
+        setupLearn(learnTap, MidiController::Kind::tapTempo);
 
         cancelButton.onClick = [this] { controller.cancelLearn(); updateState(); };
         addAndMakeVisible(cancelButton);
@@ -79,7 +81,7 @@ public:
         hint.setJustificationType(juce::Justification::topLeft);
         addAndMakeVisible(hint);
 
-        setSize(560, 504);
+        setSize(560, 538);
         updateState();
         startTimerHz(10);
     }
@@ -113,6 +115,8 @@ public:
         hint.setBounds(area.removeFromBottom(54));
         area.removeFromBottom(8);
 
+        auto learnRow3 = area.removeFromBottom(28);
+        area.removeFromBottom(6);
         auto learnRow2 = area.removeFromBottom(28);
         area.removeFromBottom(6);
         auto learnRow1 = area.removeFromBottom(28);
@@ -122,7 +126,8 @@ public:
         learnTuner.setBounds(learnRow1.reduced(2, 0));
         learnRecord.setBounds(learnRow2.removeFromLeft(w).reduced(2, 0));
         learnSnapshot.setBounds(learnRow2.removeFromLeft(w).reduced(2, 0));
-        cancelButton.setBounds(learnRow2.reduced(2, 0));
+        learnTap.setBounds(learnRow2.reduced(2, 0));
+        cancelButton.setBounds(learnRow3.removeFromRight(w).reduced(2, 0));
         area.removeFromBottom(6);
 
         auto buttons = area.removeFromBottom(28);
@@ -190,7 +195,7 @@ private:
         removeButton.setEnabled(hasRow);
         modeButton.setEnabled(isSwitch);
         modeButton.setButtonText(isSwitch && mappings[(size_t) row].switchMode == MidiController::SwitchMode::latching
-                                     ? "Mode: Latching" : "Mode: Momentary");
+                                     ? "Mode: Hold / Latch" : "Mode: Toggle");
         clearButton.setEnabled(! mappings.empty());
         cancelButton.setEnabled(controller.isLearning());
     }
@@ -202,10 +207,10 @@ private:
     juce::Label title, inputsLabel, lastLabel, hint;
     juce::TextButton settingsButton { "Audio / MIDI Settings" };
     juce::ListBox list;
-    juce::TextButton removeButton { "Remove" }, modeButton { "Mode: Momentary" }, clearButton { "Clear all" };
+    juce::TextButton removeButton { "Remove" }, modeButton { "Mode: Toggle" }, clearButton { "Clear all" };
     juce::TextButton learnNext { "Learn: Next preset" }, learnPrevious { "Learn: Prev preset" },
                      learnTuner { "Learn: Tuner" }, learnRecord { "Learn: Record" },
-                     learnSnapshot { "Learn: Snapshot A/B" }, cancelButton { "Cancel learn" };
+                     learnSnapshot { "Learn: Snapshot A/B" }, learnTap { "Learn: Tap tempo" }, cancelButton { "Cancel learn" };
 };
 
 //==============================================================================

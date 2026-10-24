@@ -369,6 +369,10 @@ void MainComponent::setupMidi()
         selectSnapshot(1 - audioEngine.getActiveSnapshot());
         showTransientStatus(juce::String("MIDI: snapshot ") + (audioEngine.getActiveSnapshot() == 0 ? "A" : "B"), 2.0);
     };
+    midi.onTapTempo = [this](double bpm)
+    {
+        showTransientStatus("MIDI: tap tempo " + juce::String(juce::roundToInt(bpm)) + " BPM", 2.0);
+    };
     midi.onLearned       = [this](const MidiController::Mapping& m) { showTransientStatus("MIDI learned: " + midi.describe(m)); };
     midi.onMappingsChanged = [this]
     {
