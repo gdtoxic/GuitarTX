@@ -9,15 +9,17 @@
 #include "TunerProcessor.h"
 #include "Recorder.h"
 #include "DrumMachine.h"
+#include "ListenProcessor.h"
 
 // Аудиодвижок: устройство + граф обработки.
 //
 // Граф:
 //                                 +-> [основная цепочка] ---------+
-//   Input -> RecIn -> MeterIn -> Tuner -> InputGain +              +-> Master -> Fade -> Drums -> OutputGain -> MeterOut -> RecOut -> Output
+//   Input -> RecIn -> Listen -> MeterIn -> Tuner -> InputGain +              +-> Master -> Fade -> Drums -> OutputGain -> MeterOut -> RecOut -> Output
 //                                 +-> [параллельный эффект 1] ----+
 //                                 +-> [параллельный эффект 2] ----+
 //
+// Listen - "уши" драм-машины: запись риффа (LISTEN) и атаки для FOLLOW, по сухому сигналу.
 // Drums - драм-машина: барабаны добавляются к гитаре после мастер-секции и Fade
 // (перестройка цепочки при смене пресета их не прерывает).
 // RecIn / RecOut - рекордер: re-amp и запись DI в начале, запись Wet в самом конце.
@@ -96,8 +98,12 @@ public:
     // Рекордер DI + Wet и re-amp
     Recorder& getRecorder() noexcept { return recorder; }
 
-    // Драм-машина
+    // Драм-машина и её вход (сухая гитара)
     DrumMachine& getDrums() noexcept { return *drums; }
+    ListenProcessor& getListener() noexcept { return *listener; }
+
+    // Задержка вход + выход текущего устройства (сэмплы)
+    int getRoundTripLatency() const;
 
     // Пики для индикаторов (линейные значения), с max-hold и сбросом
     float getAndResetInputPeak();
@@ -140,7 +146,7 @@ private:
 
     Node::Ptr audioInputNode, audioOutputNode;
     Node::Ptr recorderInNode, recorderOutNode;
-    Node::Ptr meterInNode, tunerNode, gainNode, masterNode, drumsNode, outputGainNode, fadeNode, meterOutNode;
+    Node::Ptr listenNode, meterInNode, tunerNode, gainNode, masterNode, drumsNode, outputGainNode, fadeNode, meterOutNode;
 
     MeterProcessor* meterIn  = nullptr;
     TunerProcessor* tuner    = nullptr;
@@ -148,6 +154,7 @@ private:
     GainProcessor*  outputGain = nullptr;
     MasterProcessor* master    = nullptr;
     DrumMachine*    drums    = nullptr;
+    ListenProcessor* listener = nullptr;
     FadeProcessor*  fade     = nullptr;
     MeterProcessor* meterOut = nullptr;
 

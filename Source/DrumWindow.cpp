@@ -251,9 +251,81 @@ class DrumWindow::Content : public juce::Component,
                             private juce::Timer
 {
 public:
-    Content(DrumMachine& drumsToUse, DrumLibrary& libraryToUse)
-        : drums(drumsToUse), library(libraryToUse)
+    Content(DrumMachine& drumsToUse, DrumLibrary& libraryToUse, DrumAssistant& assistantToUse,
+            std::function<juce::File()> lastDi)
+        : drums(drumsToUse), library(libraryToUse), assistant(assistantToUse), lastDiFile(std::move(lastDi))
     {
+        // --- Сбивки
+        setupLabel(fillLabel, "Fill");
+        fillBox.addItem("Off", 1);
+        for (int n : { 2, 4, 8 })
+            fillBox.addItem("every " + juce::String(n), n);
+        fillBox.setTooltip("Fill: a break at the end of every N-th pattern loop, then a crash");
+        fillBox.onChange = [this] { drums.setFillEvery(fillBox.getSelectedId() == 1 ? 0 : fillBox.getSelectedId()); };
+        addAndMakeVisible(fillBox);
+
+        newFillButton.setTooltip("Another fill variant");
+        newFillButton.onClick = [this] { drums.newFill(); };
+        addAndMakeVisible(newFillButton);
+
+        // --- Рифф и генерация
+        listenButton.setClickingTogglesState(false);
+        listenButton.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(200, 40, 40));
+        listenButton.setTooltip("LISTEN: play your riff from the downbeat (1-2 bars), stop playing - "
+                                "the tempo and a matching beat are set automatically. Esc cancels");
+        listenButton.onClick = [this] { assistant.toggleListen(); updateAssistant(); };
+        addAndMakeVisible(listenButton);
+
+        fileButton.setTooltip("Analyze a riff from a WAV / AIFF / FLAC file");
+        fileButton.onClick = [this] { chooseRiffFile(); };
+        addAndMakeVisible(fileButton);
+
+        lastDiButton.setTooltip("Analyze the last DI recording (REC)");
+        lastDiButton.onClick = [this]
+        {
+            const auto file = lastDiFile ? lastDiFile() : juce::File();
+
+            if (file.existsAsFile())
+                assistant.analyzeFile(file);
+            else
+                statusLabel.setText("No DI recording yet: record your riff with REC first", juce::dontSendNotification);
+        };
+        addAndMakeVisible(lastDiButton);
+
+        followButton.setClickingTogglesState(true);
+        followButton.setColour(juce::TextButton::buttonOnColourId, GuitarTXLookAndFeel::accent);
+        followButton.setTooltip("FOLLOW: drums start with your first note and keep adjusting tempo and timing "
+                                "to your playing (steady playing, within ~30 % of the set tempo)");
+        followButton.onClick = [this] { drums.setFollow(followButton.getToggleState()); updateAssistant(); };
+        addAndMakeVisible(followButton);
+
+        setupLabel(styleLabel, "Style");
+        styleBox.addItemList(DrumGenerator::styleNames(), 1);
+        styleBox.onChange = [this] { drums.setStyle((DrumMachine::Style) (styleBox.getSelectedId() - 1)); };
+        addAndMakeVisible(styleBox);
+
+        setupLabel(densityLabel, "Density");
+        densitySlider.setSliderStyle(juce::Slider::LinearBar);
+        densitySlider.setRange(0.0, 100.0, 1.0);
+        densitySlider.setTextValueSuffix(" %");
+        densitySlider.setDoubleClickReturnValue(true, 60.0);
+        densitySlider.onValueChange = [this] { drums.setDensity((float) densitySlider.getValue() / 100.0f); };
+        addAndMakeVisible(densitySlider);
+
+        generateButton.setTooltip("New pattern in this style (from your riff if RIFF is on). Every click - a new variant");
+        generateButton.onClick = [this] { assistant.generate(); };
+        addAndMakeVisible(generateButton);
+
+        varyButton.setTooltip("Vary the current pattern: kick moves, ghost notes, hats - the backbeat stays");
+        varyButton.onClick = [this] { assistant.vary(); };
+        addAndMakeVisible(varyButton);
+
+        riffButton.setClickingTogglesState(true);
+        riffButton.setColour(juce::TextButton::buttonOnColourId, GuitarTXLookAndFeel::accent);
+        riffButton.setTooltip("Generate from the last analyzed riff (kick follows the riff)");
+        riffButton.onClick = [this] { assistant.useRiff = riffButton.getToggleState(); };
+        addAndMakeVisible(riffButton);
+
         setWantsKeyboardFocus(true);
 
         playButton.setClickingTogglesState(true);
@@ -376,7 +448,7 @@ public:
         statusLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
         addAndMakeVisible(statusLabel);
 
-        setSize(980, 2 * 34 + 26 + DrumPattern::numTracks * rowHeight + 60);
+        setSize(1020, 3 * 38 + 26 + DrumPattern::numTracks * rowHeight + 60);
         refresh();
         startTimerHz(30);
     }
@@ -387,6 +459,10 @@ public:
         rebuildPatternBox();
 
         kitBox.setSelectedId((int) drums.getKit() + 1, juce::dontSendNotification);
+        styleBox.setSelectedId((int) drums.getStyle() + 1, juce::dontSendNotification);
+        densitySlider.setValue(drums.getDensity() * 100.0, juce::dontSendNotification);
+        fillBox.setSelectedId(drums.getFillEvery() == 0 ? 1 : drums.getFillEvery(), juce::dontSendNotification);
+        updateAssistant();
         levelSlider.setValue(drums.getLevelDb(), juce::dontSendNotification);
         tempoSlider.setValue(GlobalTempo::get().getBpm(), juce::dontSendNotification);
 
@@ -403,6 +479,13 @@ public:
         {
             drums.togglePlaying();
             updateTransport();
+            return true;
+        }
+
+        if (key == juce::KeyPress::escapeKey && assistant.getListenState() != DrumAssistant::ListenState::idle)
+        {
+            assistant.cancelListen();
+            updateAssistant();
             return true;
         }
 
@@ -432,7 +515,12 @@ public:
         kitBox.setBounds(row1.removeFromLeft(130));
         row1.removeFromLeft(24);
         levelLabel.setBounds(row1.removeFromLeft(42));
-        levelSlider.setBounds(row1.removeFromLeft(150));
+        levelSlider.setBounds(row1.removeFromLeft(130));
+        row1.removeFromLeft(20);
+        fillLabel.setBounds(row1.removeFromLeft(30));
+        fillBox.setBounds(row1.removeFromLeft(100));
+        row1.removeFromLeft(4);
+        newFillButton.setBounds(row1.removeFromLeft(74));
 
         area.removeFromTop(8);
         auto row2 = area.removeFromTop(30);
@@ -456,6 +544,28 @@ public:
         row2.removeFromLeft(12);
         swingLabel.setBounds(row2.removeFromLeft(44));
         swingSlider.setBounds(row2.removeFromLeft(110));
+
+        area.removeFromTop(8);
+        auto row3 = area.removeFromTop(30);
+        listenButton.setBounds(row3.removeFromLeft(110));
+        row3.removeFromLeft(4);
+        fileButton.setBounds(row3.removeFromLeft(84));
+        row3.removeFromLeft(4);
+        lastDiButton.setBounds(row3.removeFromLeft(70));
+        row3.removeFromLeft(4);
+        followButton.setBounds(row3.removeFromLeft(90));
+        row3.removeFromLeft(24);
+        styleLabel.setBounds(row3.removeFromLeft(38));
+        styleBox.setBounds(row3.removeFromLeft(120));
+        row3.removeFromLeft(12);
+        densityLabel.setBounds(row3.removeFromLeft(54));
+        densitySlider.setBounds(row3.removeFromLeft(100));
+        row3.removeFromLeft(12);
+        generateButton.setBounds(row3.removeFromLeft(84));
+        row3.removeFromLeft(4);
+        varyButton.setBounds(row3.removeFromLeft(56));
+        row3.removeFromLeft(4);
+        riffButton.setBounds(row3.removeFromLeft(56));
 
         statusLabel.setBounds(area.removeFromBottom(20));
         area.removeFromBottom(6);
@@ -504,6 +614,63 @@ private:
             lastQueued = queued;
             updateStatus();
         }
+
+        const bool fillNow = drums.isPlayingFill();
+
+        if (fillNow != lastFill)
+        {
+            lastFill = fillNow;
+            grid.setPattern(fillNow ? drums.getFill() : drums.getPattern());
+        }
+
+        // LISTEN мигает, пока ждёт ноту / пишет; FOLLOW - пока ждёт первую ноту
+        const auto listenState = assistant.getListenState();
+        const bool blink = (juce::Time::getMillisecondCounter() / 300) % 2 == 0;
+        listenButton.setToggleState(listenState == DrumAssistant::ListenState::recording
+                                    || (listenState == DrumAssistant::ListenState::waiting && blink), juce::dontSendNotification);
+
+        if (listenState == DrumAssistant::ListenState::recording)
+            listenButton.setButtonText(juce::String::fromUTF8("\xe2\x97\x8f ") + juce::String(assistant.getRecordedSeconds(), 1) + " s");
+
+        followButton.setToggleState(drums.isFollowing() && ! (drums.isWaitingForFirstNote() && ! blink), juce::dontSendNotification);
+
+        if (listenState != lastListenState)
+        {
+            lastListenState = listenState;
+            updateAssistant();
+        }
+    }
+
+    // Состояние ассистента: кнопки и строка статуса
+    void updateAssistant()
+    {
+        const auto listenState = assistant.getListenState();
+        listenButton.setButtonText(listenState == DrumAssistant::ListenState::idle    ? juce::String::fromUTF8("\xe2\x97\x8f LISTEN")
+                                 : listenState == DrumAssistant::ListenState::waiting ? juce::String("waiting...")
+                                                                                      : listenButton.getButtonText());
+        riffButton.setEnabled(assistant.hasRiff());
+        riffButton.setToggleState(assistant.hasRiff() && assistant.useRiff, juce::dontSendNotification);
+
+        if (drums.isWaitingForFirstNote())
+            statusLabel.setText("FOLLOW: waiting for your first note...", juce::dontSendNotification);
+        else if (assistant.getStatus().isNotEmpty())
+            statusLabel.setText(assistant.getStatus(), juce::dontSendNotification);
+    }
+
+    void chooseRiffFile()
+    {
+        riffChooser = std::make_unique<juce::FileChooser>("Riff to analyze (DI guitar works best)", juce::File(),
+                                                          "*.wav;*.aif;*.aiff;*.flac");
+        juce::Component::SafePointer<Content> safeThis(this);
+
+        riffChooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                 [safeThis](const juce::FileChooser& chooser)
+                                 {
+                                     const auto file = chooser.getResult();
+
+                                     if (safeThis != nullptr && file.existsAsFile())
+                                         safeThis->assistant.analyzeFile(file);
+                                 });
     }
 
     void updateTransport()
@@ -804,6 +971,8 @@ private:
 
     DrumMachine& drums;
     DrumLibrary& library;
+    DrumAssistant& assistant;
+    std::function<juce::File()> lastDiFile;
     std::vector<DrumPattern> userPatterns;
     GlitchProcessor::TapTempo tapTempo;
 
@@ -820,7 +989,15 @@ private:
     juce::Rectangle<int> gridArea;
 
     bool modified = false;
-    bool lastQueued = false;
+    bool lastQueued = false, lastFill = false;
+    DrumAssistant::ListenState lastListenState = DrumAssistant::ListenState::idle;
+
+    juce::Label fillLabel, styleLabel, densityLabel;
+    juce::ComboBox fillBox, styleBox;
+    juce::Slider densitySlider;
+    juce::TextButton newFillButton { "New fill" }, listenButton, fileButton { "File..." }, lastDiButton { "Last DI" },
+                     followButton { "FOLLOW" }, generateButton { "Generate" }, varyButton { "Vary" }, riffButton { "RIFF" };
+    std::unique_ptr<juce::FileChooser> riffChooser;
 
     std::unique_ptr<juce::AlertWindow> nameDialog;
     juce::ScopedMessageBox messageBox;
@@ -828,10 +1005,11 @@ private:
 };
 
 //==============================================================================
-DrumWindow::DrumWindow(DrumMachine& drums, DrumLibrary& library)
+DrumWindow::DrumWindow(DrumMachine& drums, DrumLibrary& library, DrumAssistant& assistant,
+                       std::function<juce::File()> lastDiFile)
     : DocumentWindow("Drums", GuitarTXLookAndFeel::background, DocumentWindow::closeButton)
 {
-    content = new Content(drums, library);
+    content = new Content(drums, library, assistant, std::move(lastDiFile));
 
     setUsingNativeTitleBar(true);
     setContentOwned(content, true);

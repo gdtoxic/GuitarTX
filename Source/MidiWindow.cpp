@@ -69,6 +69,7 @@ public:
         setupLearn(learnSnapshot, MidiController::Kind::snapshot);
         setupLearn(learnTap, MidiController::Kind::tapTempo);
         setupLearn(learnDrums, MidiController::Kind::drums);
+        setupLearn(learnListen, MidiController::Kind::listen);
 
         cancelButton.onClick = [this] { controller.cancelLearn(); updateState(); };
         addAndMakeVisible(cancelButton);
@@ -129,6 +130,7 @@ public:
         learnSnapshot.setBounds(learnRow2.removeFromLeft(w).reduced(2, 0));
         learnTap.setBounds(learnRow2.reduced(2, 0));
         learnDrums.setBounds(learnRow3.removeFromLeft(w).reduced(2, 0));
+        learnListen.setBounds(learnRow3.removeFromLeft(w).reduced(2, 0));
         cancelButton.setBounds(learnRow3.removeFromRight(w).reduced(2, 0));
         area.removeFromBottom(6);
 
@@ -212,7 +214,7 @@ private:
     juce::TextButton removeButton { "Remove" }, modeButton { "Mode: Toggle" }, clearButton { "Clear all" };
     juce::TextButton learnNext { "Learn: Next preset" }, learnPrevious { "Learn: Prev preset" },
                      learnTuner { "Learn: Tuner" }, learnRecord { "Learn: Record" },
-                     learnSnapshot { "Learn: Snapshot A/B" }, learnTap { "Learn: Tap tempo" }, learnDrums { "Learn: Drums play/stop" }, cancelButton { "Cancel learn" };
+                     learnSnapshot { "Learn: Snapshot A/B" }, learnTap { "Learn: Tap tempo" }, learnDrums { "Learn: Drums play/stop" }, learnListen { "Learn: Drums LISTEN" }, cancelButton { "Cancel learn" };
 };
 
 //==============================================================================

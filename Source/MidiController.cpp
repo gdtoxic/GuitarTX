@@ -23,6 +23,7 @@ namespace
             case K::snapshot:       return "snapshot";
             case K::tapTempo:       return "tapTempo";
             case K::drums:          return "drums";
+            case K::listen:         return "listen";
         }
         return "parameter";
     }
@@ -30,7 +31,7 @@ namespace
     std::optional<MidiController::Kind> kindFromString(const juce::String& text)
     {
         using K = MidiController::Kind;
-        for (auto kind : { K::parameter, K::footswitch, K::nextPreset, K::previousPreset, K::tuner, K::record, K::snapshot, K::tapTempo, K::drums })
+        for (auto kind : { K::parameter, K::footswitch, K::nextPreset, K::previousPreset, K::tuner, K::record, K::snapshot, K::tapTempo, K::drums, K::listen })
             if (kindToString(kind) == text)
                 return kind;
         return std::nullopt;
@@ -241,6 +242,11 @@ void MidiController::applyController(int channel, int controller, int value)
                 if (newPress && onToggleDrums)
                     onToggleDrums();
                 break;
+
+            case Kind::listen:
+                if (newPress && onListen)
+                    onListen();
+                break;
         }
     }
 }
@@ -420,6 +426,7 @@ juce::String MidiController::describeTarget(const LearnTarget& target) const
         case Kind::snapshot:       return "Snapshot A/B";
         case Kind::tapTempo:       return "Tap tempo";
         case Kind::drums:          return "Drums play/stop";
+        case Kind::listen:         return "Drums LISTEN";
     }
 
     return {};

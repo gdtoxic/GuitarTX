@@ -2,6 +2,25 @@
 
 All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
 
+## [0.4.1] - 2026-10-25
+
+### Added
+- **LISTEN** (drum window, or a MIDI footswitch): play your riff from the downbeat (1-2 bars, twice is fine), stop
+  playing — after 2 s of silence the riff is analyzed: notes (spectral flux), tempo and grid (1/16 or triplets),
+  accents and rests. The tempo is set and a matching beat starts (at the next bar if the drums are playing):
+  kick in unison with the riff, snare and cymbals by style, toms in the riff's rests. Esc cancels.
+- **File...** / **Last DI**: the same analysis from a WAV / AIFF / FLAC file or the last DI recording.
+- **FOLLOW**: the drums start with your first note and keep pulling tempo and timing towards your playing
+  (phase-locked loop on the guitar attacks, round-trip latency compensated). Works for steady playing within
+  ~30 % of the set tempo.
+- **Generate** by style — Doom, Sludge, Thrash, Blast, Djent, Metalcore, Industrial, Nu-Metal, Rock — with
+  **Density**; every click is a new 2-bar variant. With **RIFF** on, generation follows the last analyzed riff.
+- **Vary**: mutates the current pattern (kick moves, ghost notes, hat subdivision, open hat), the backbeat stays.
+- **Fills**: Fill every 2 / 4 / 8 loops (default 4), generated from the current pattern in the chosen style
+  (snare rolls, tom runs, doom tom hits, blast rolls), a crash on the next downbeat; **New fill** for another one.
+  The grid shows the fill while it plays.
+- MIDI: **Drums LISTEN**.
+
 ## [0.4.0] - 2026-10-25
 
 ### Added

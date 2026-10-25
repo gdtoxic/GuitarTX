@@ -372,6 +372,7 @@ void MainComponent::setupMidi()
         showTransientStatus(juce::String("MIDI: snapshot ") + (audioEngine.getActiveSnapshot() == 0 ? "A" : "B"), 2.0);
     };
     midi.onToggleDrums = [this] { toggleDrums(); };
+    midi.onListen      = [this] { drumAssistant.toggleListen(); };
     midi.onTapTempo = [this](double bpm)
     {
         showTransientStatus("MIDI: tap tempo " + juce::String(juce::roundToInt(bpm)) + " BPM", 2.0);
@@ -428,6 +429,16 @@ void MainComponent::setupDrums()
         drums.setPattern(DrumLibrary::getFactoryPatterns()[1], true);   // Doom Half-Time
 
     lastSavedDrums = drums.createState();
+    drums.setLatencyCompensation(audioEngine.getRoundTripLatency());
+
+    drumAssistant.onChanged = [this]
+    {
+        if (drumWindow != nullptr && drumWindow->isVisible())
+            drumWindow->refresh();
+
+        if (drumAssistant.getStatus().isNotEmpty())
+            showTransientStatus(drumAssistant.getStatus(), 4.0);
+    };
 
     drumsButton.setTooltip("Drum machine: patterns, kit, tempo");
     drumsButton.onClick = [this] { showDrumWindow(); };
@@ -445,7 +456,8 @@ void MainComponent::showDrumWindow()
 {
     if (drumWindow == nullptr)
     {
-        drumWindow = std::make_unique<DrumWindow>(audioEngine.getDrums(), drumLibrary);
+        drumWindow = std::make_unique<DrumWindow>(audioEngine.getDrums(), drumLibrary, drumAssistant,
+                                                  [this] { return audioEngine.getRecorder().getLastDiFile(); });
         drumWindow->centreAroundComponent(this, drumWindow->getWidth(), drumWindow->getHeight());
     }
 
@@ -987,6 +999,7 @@ void MainComponent::changeListenerCallback(juce::ChangeBroadcaster*)
 
     saveDeviceState();
     updateStatusLabel();
+    audioEngine.getDrums().setLatencyCompensation(audioEngine.getRoundTripLatency());
 }
 
 //==============================================================================

@@ -24,6 +24,10 @@
 #include "GlitchProcessor.h"
 #include "DrumMachine.h"
 #include "DrumLibrary.h"
+#include "RiffAnalyzer.h"
+#include "DrumGenerator.h"
+#include "DrumAssistant.h"
+#include "ListenProcessor.h"
 #include "GlobalTempo.h"
 #include <cstdio>
 #include <cstdlib>
@@ -1407,6 +1411,350 @@ static void testDrums()
     clickFile.deleteFile();
 }
 
+// Синтетический рифф: 'X' - акцент, 'x' - удар (палм-мьют), '-' - нота тянется, '.' - пауза
+static std::vector<float> synthRiff(double bpm, int stepsPerBeat, const char* riff, int repeats, double jitterMs,
+                                    double sr = 48000.0, juce::int64 seed = 7)
+{
+    const juce::String text(riff);
+    const double step = 60.0 / bpm / stepsPerBeat;
+    const int total = text.length() * repeats;
+    std::vector<float> out((size_t) ((total * step + 1.5) * sr), 0.0f);
+    juce::Random random(seed);
+
+    for (int i = 0; i < total; ++i)
+    {
+        const auto c = text[i % text.length()];
+
+        if (c != 'x' && c != 'X')
+            continue;
+
+        int sustain = 1;
+        while (i + sustain < total && text[(i + sustain) % text.length()] == '-') ++sustain;
+
+        const double start = i * step + random.nextDouble() * 2.0 * jitterMs * 0.001 - jitterMs * 0.001;
+        const double length = sustain > 1 ? sustain * step : 0.06;   // палм-мьют глохнет быстро
+        const double f = random.nextBool() ? 82.4 : 123.5;
+        const float amp = c == 'X' ? 0.8f : 0.45f;
+        const int s0 = juce::jmax(0, (int) (start * sr));
+        double phase = 0.0;
+
+        for (int n = 0; n < (int) ((length + 0.08) * sr) && s0 + n < (int) out.size(); ++n)
+        {
+            const double t = n / sr;
+            phase += f / sr;
+            const double saw = 2.0 * (phase - std::floor(phase)) - 1.0;
+            const double env = std::exp(-t / (sustain > 1 ? 1.5 : 0.05)) * (t > length ? std::exp(-(t - length) / 0.01) : 1.0);
+            const double pick = t < 0.004 ? (random.nextDouble() * 2.0 - 1.0) * 0.8 * (1.0 - t / 0.004) : 0.0;   // щелчок медиатора
+            out[(size_t) (s0 + n)] += (float) ((saw * env + pick) * amp);
+        }
+    }
+
+    return out;
+}
+
+static juce::String stepsText(const RiffAnalysis& a)
+{
+    juce::String text;
+    for (int s = 0; s < a.length; ++s) text << (a.strength[(size_t) s] > 0.0f ? 'x' : '.');
+    return text;
+}
+
+static void testRiffAnalysis()
+{
+    const double sr = 48000;
+
+    // 1. 16-е на 140 BPM, два повтора, разброс атак +-4 мс
+    {
+        const auto riff = synthRiff(140.0, 4, "X.xxX.x.xxX.x.x.", 2, 4.0);
+        const auto a = RiffAnalyzer::analyze(riff.data(), (int) riff.size(), sr);
+        std::printf("Riff 140 / 16ths: %s | %s | conf %.2f\n", a.message.toRawUTF8(), stepsText(a).toRawUTF8(), a.confidence);
+        CHECK(a.valid && std::abs(a.bpm - 140.0) < 1.0 && a.grid == DrumPattern::Grid::sixteenth && a.length == 32
+              && stepsText(a).startsWith("x.xxx.x.xxx.x.x.") && a.confidence > 0.7, "riff 16ths");
+    }
+
+    // 1b. То же с шумом и фоном сети 50 Гц (как у реального DI)
+    {
+        auto riff = synthRiff(140.0, 4, "X.xxX.x.xxX.x.x.", 2, 4.0, sr, 21);
+        juce::Random noise(3);
+        for (size_t i = 0; i < riff.size(); ++i)
+            riff[i] += 0.004f * (noise.nextFloat() * 2.0f - 1.0f) + 0.01f * (float) std::sin(2.0 * juce::MathConstants<double>::pi * 50.0 * (double) i / sr);
+        const auto a = RiffAnalyzer::analyze(riff.data(), (int) riff.size(), sr);
+        std::printf("Riff 140 + noise/hum: %s | %s\n", a.message.toRawUTF8(), stepsText(a).toRawUTF8());
+        CHECK(a.valid && std::abs(a.bpm - 140.0) < 1.0 && stepsText(a).startsWith("x.xxx.x.xxx.x.x."), "riff with noise");
+    }
+
+    // 2. Триоли на 100 BPM
+    {
+        const auto riff = synthRiff(100.0, 3, "X.xX.xX..X.x", 2, 4.0);
+        const auto a = RiffAnalyzer::analyze(riff.data(), (int) riff.size(), sr);
+        std::printf("Riff 100 / triplets: %s | %s\n", a.message.toRawUTF8(), stepsText(a).toRawUTF8());
+        CHECK(a.valid && std::abs(a.bpm - 100.0) < 1.0 && a.grid == DrumPattern::Grid::eighthTriplet
+              && stepsText(a).startsWith("x.xx.xx..x.x"), "riff triplets");
+    }
+
+    // 3. Медленный дум с тянущимися нотами: подсказка темпа снимает неоднозначность x2
+    {
+        const auto riff = synthRiff(75.0, 4, "X---x.x.X-------", 2, 5.0);
+        const auto a = RiffAnalyzer::analyze(riff.data(), (int) riff.size(), sr, 80.0);
+        std::printf("Riff 75 doom (hint 80): %s | %s\n", a.message.toRawUTF8(), stepsText(a).toRawUTF8());
+        CHECK(a.valid && std::abs(a.bpm - 75.0) < 1.5 && stepsText(a).startsWith("x...x.x.x......."), "riff doom with hint");
+        CHECK(a.sounding[1] && ! a.sounding[7] && a.sounding[9], "riff sustain / rest detection");
+    }
+
+    // 4. Тишина и одиночная нота - не рифф
+    {
+        std::vector<float> silence((size_t) sr * 2, 0.0f);
+        const auto a = RiffAnalyzer::analyze(silence.data(), (int) silence.size(), sr);
+        const auto one = synthRiff(120.0, 4, "X...............", 1, 0.0);
+        const auto b = RiffAnalyzer::analyze(one.data(), (int) one.size(), sr);
+        CHECK(! a.valid && ! b.valid, "riff: silence / single note rejected");
+    }
+}
+
+static void testDrumGenerator()
+{
+    using T = DrumPattern::Track;
+    using S = DrumGenerator::Style;
+
+    // 1. Все стили: валидно, детерминированно, разные seed - разные варианты
+    int different = 0;
+
+    for (int st = 0; st < DrumGenerator::numStyles; ++st)
+    {
+        const auto style = (S) st;
+        const auto a = DrumGenerator::byStyle(style, 0.6f, 1234);
+        const auto b = DrumGenerator::byStyle(style, 0.6f, 1234);
+        const auto c = DrumGenerator::byStyle(style, 0.6f, 98765);
+
+        int kicks = 0, snares = 0;
+        for (int s = 0; s < a.length; ++s) { kicks += a.get((int) T::kick, s) > 0; snares += a.get((int) T::snare, s) >= 2; }
+
+        CHECK(a == b && a.length >= 12 && a.length <= 32 && a.get((int) T::kick, 0) > 0 && kicks >= 2 && snares >= 1,
+              "style %s: length %d kicks %d snares %d", DrumGenerator::styleNames()[st].toRawUTF8(), a.length, kicks, snares);
+        different += (a != c) ? 1 : 0;
+    }
+
+    std::printf("Drum generator: %d of %d styles vary by seed\n", different, DrumGenerator::numStyles);
+    CHECK(different >= DrumGenerator::numStyles - 1, "style variants differ by seed");
+
+    // 2. Основа стиля: дум - снейр на "три", рок - на 2 и 4, бласт - по очереди с бочкой
+    {
+        const auto doom = DrumGenerator::byStyle(S::doom, 0.5f, 1);
+        const int spb = doom.stepsPerBeat();
+        CHECK(doom.get((int) T::snare, 2 * spb) == 3 && doom.get((int) T::snare, spb) == 0, "doom half-time snare");
+
+        const auto rock = DrumGenerator::byStyle(S::rock, 0.5f, 1);
+        CHECK(rock.get((int) T::snare, 4) == 3 && rock.get((int) T::snare, 12) == 3, "rock backbeat");
+    }
+
+    // 3. По риффу: кик в унисон с атаками (djent, плотно), томы в паузе
+    {
+        const auto riff = synthRiff(140.0, 4, "X.xxX.x.xx......", 2, 3.0);
+        const auto a = RiffAnalyzer::analyze(riff.data(), (int) riff.size(), 48000.0);
+        const auto p = DrumGenerator::fromRiff(a, S::djent, 1.0f, 5);
+
+        juce::String kicks;
+        for (int s = 0; s < 16; ++s) kicks << (p.get((int) T::kick, s) > 0 ? 'x' : '.');
+
+        bool toms = false;
+        for (int s = 10; s < 16; ++s) toms = toms || p.get((int) T::lowTom, s) > 0 || p.get((int) T::highTom, s) > 0;
+
+        std::printf("Riff -> djent kick: %s (riff X.xxX.x.xx......), toms in gap: %s\n", kicks.toRawUTF8(), toms ? "yes" : "no");
+        CHECK(kicks == "x.xxx.x.xx......" && p.length == a.length && toms, "kick follows riff");
+    }
+
+    // 4. Vary: основа (снейр) на месте, но паттерн другой; сбивка меняет только конец
+    {
+        const auto base = DrumGenerator::byStyle(S::nuMetal, 0.5f, 77);
+        const auto varied = DrumGenerator::vary(base, S::nuMetal, 1.0f, 3);
+        bool snareKept = true;
+
+        for (int s = 0; s < base.length; ++s)
+            if (base.get((int) T::snare, s) >= 2) snareKept = snareKept && varied.get((int) T::snare, s) == base.get((int) T::snare, s);
+
+        CHECK(varied != base && snareKept, "vary keeps backbone");
+
+        const auto fill = DrumGenerator::makeFill(base, S::nuMetal, 11);
+        const int spb = base.stepsPerBeat();
+        bool headSame = true, tailBusy = false;
+
+        for (int t = 0; t < DrumPattern::numTracks; ++t)
+            for (int s = 0; s < base.length - 2 * spb; ++s)
+                headSame = headSame && fill.get(t, s) == base.get(t, s);
+
+        for (int s = base.length - spb; s < base.length; ++s)
+            tailBusy = tailBusy || fill.get((int) T::snare, s) > 0 || fill.get((int) T::lowTom, s) > 0 || fill.get((int) T::highTom, s) > 0;
+
+        CHECK(headSame && tailBusy && fill.length == base.length, "fill changes only the end");
+    }
+}
+
+static void testDrumFillsAndFollow()
+{
+    const double sr = 48000; const int block = 256;
+    auto& tempo = GlobalTempo::get();
+    using T = DrumPattern::Track;
+
+    const auto clickFile = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("guitartx_click2.wav");
+    {
+        clickFile.deleteFile();
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream>(clickFile);
+        auto writer = wav.createWriterFor(stream, juce::AudioFormatWriterOptions{}.withSampleRate(sr).withNumChannels(1).withBitsPerSample(24));
+        juce::AudioBuffer<float> click(1, 2000);
+        click.clear();
+        click.setSample(0, 0, 1.0f);
+        writer->writeFromAudioSampleBuffer(click, 0, click.getNumSamples());
+    }
+
+    // 1. Сбивка каждые 2 повтора, после неё - крэш на сильную долю
+    {
+        tempo.setBpm(120.0);
+        DrumMachine drums;
+        drums.setLevelDb(0.0f);
+        drums.setPlayConfigDetails(2, 2, sr, block);
+        drums.prepareToPlay(sr, block);
+        juce::String error;
+        CHECK(drums.loadSample((int) T::crash, clickFile, error), "crash click");
+
+        for (int t = 0; t < DrumPattern::numTracks; ++t)
+            drums.getTrack(t).mute.store(t != (int) T::crash);
+
+        drums.setStyle(DrumGenerator::Style::rock);
+        drums.setFillEvery(2);
+        drums.setPattern(DrumPattern::fromRows("Plain", DrumPattern::Grid::sixteenth, 0.0f,
+                                               { { T::kick, "x..............." } }), true);
+
+        const auto& fill = drums.getFill();
+        bool fillHasHits = false;
+        for (int s = 8; s < 16; ++s) fillHasHits = fillHasHits || fill.get((int) T::snare, s) > 0 || fill.get((int) T::lowTom, s) > 0
+                                                  || fill.get((int) T::highTom, s) > 0;
+
+        drums.setPlaying(true);
+        std::vector<bool> fillFlags;
+        const auto out = run(drums, std::vector<float>((size_t) (sr * 6.2) / block * block, 0.0f), block,
+                             [&](int start)
+                             {
+                                 for (double t : { 0.5, 1.5, 2.5, 3.5, 4.5, 5.5 })
+                                     if (start == (int) (t * sr) / block * block) fillFlags.push_back(drums.isPlayingFill());
+                             });
+        const auto hits = onsets(out[0], 0.3f);
+
+        // 1 повтор = 2 с (96000): сбивка во втором, крэш в начале третьего (192000)
+        std::printf("Drum fills: fill flags per half-loop %d%d%d%d%d%d, crash at %s\n", (int) fillFlags[0], (int) fillFlags[1],
+                    (int) fillFlags[2], (int) fillFlags[3], (int) fillFlags[4], (int) fillFlags[5], joinInts(hits).toRawUTF8());
+        CHECK(fillHasHits && ! fillFlags[0] && ! fillFlags[1] && fillFlags[2] && fillFlags[3] && ! fillFlags[4]
+              && hits == std::vector<int>({ 192000 }), "fill every 2 loops + crash");
+    }
+
+    // 2. FOLLOW: барабаны вступают с первой нотой и подтягиваются к темпу гитары (125 при старте 120)
+    {
+        tempo.setBpm(120.0);
+        ListenProcessor listener;
+        DrumMachine drums;
+        drums.setOnsetSource(&listener);
+        drums.setLevelDb(0.0f);
+
+        for (auto* p : { (juce::AudioProcessor*) &listener, (juce::AudioProcessor*) &drums })
+        {
+            p->setPlayConfigDetails(2, 2, sr, block);
+            p->prepareToPlay(sr, block);
+        }
+
+        juce::String error;
+        CHECK(drums.loadSample((int) T::kick, clickFile, error), "kick click");
+        drums.setFillEvery(0);
+        drums.setPattern(DrumPattern::fromRows("Quarters", DrumPattern::Grid::sixteenth, 0.0f,
+                                               { { T::kick, "x...x...x...x..." } }), true);
+        drums.setFollow(true);
+        CHECK(drums.isWaitingForFirstNote() && ! drums.isPlaying(), "follow waits for the first note");
+
+        // Гитара: щипки на четверти 125 BPM с 0.3 с, лёгкий разброс
+        const double beat = 60.0 / 125.0;
+        const int total = (int) (sr * 14.0) / block * block;
+        std::vector<float> guitar((size_t) total, 0.0f);
+        std::vector<int> plucks;
+        juce::Random random(5);
+
+        for (double t = 0.3; t < 13.5; t += beat)
+        {
+            const int s0 = (int) ((t + (random.nextDouble() - 0.5) * 0.006) * sr);
+            plucks.push_back(s0);
+            for (int n = 0; n < (int) (0.2 * sr) && s0 + n < total; ++n)
+                guitar[(size_t) (s0 + n)] += 0.3f * (float) std::sin(2.0 * juce::MathConstants<double>::pi * 110.0 * n / sr)
+                                           * (float) std::exp(-n / (0.05 * sr));
+        }
+
+        juce::AudioBuffer<float> buf(2, block);
+        juce::MidiBuffer midi;
+        std::vector<float> drumOut((size_t) total, 0.0f);
+
+        for (int start = 0; start < total; start += block)
+        {
+            for (int k = 0; k < block; ++k) { buf.setSample(0, k, guitar[(size_t) (start + k)]); buf.setSample(1, k, guitar[(size_t) (start + k)]); }
+            listener.processBlock(buf, midi);
+            drums.processBlock(buf, midi);
+            for (int k = 0; k < block; ++k) drumOut[(size_t) (start + k)] = buf.getSample(0, k) - guitar[(size_t) (start + k)];
+        }
+
+        const auto kicks = onsets(drumOut, 0.3f);
+
+        // Ошибка фазы в последних 3 секундах: удар бочки против ближайшего щипка
+        double worst = 0.0;
+        int compared = 0;
+
+        for (int k : kicks)
+        {
+            if (k < (int) (10.0 * sr) || k > (int) (13.3 * sr)) continue;
+            int best = 1 << 30;
+            for (int p : plucks) best = std::abs(k - p) < std::abs(best) ? k - p : best;
+            worst = juce::jmax(worst, std::abs((double) best / sr * 1000.0));
+            ++compared;
+        }
+
+        const double firstMs = kicks.empty() ? -1.0 : (double) (kicks[0] - plucks[0]) / sr * 1000.0;
+        std::printf("FOLLOW: first kick %.1f ms after the first note, tempo 120 -> %.1f BPM, 10-13.3 s phase error <= %.1f ms (%d kicks)\n",
+                    firstMs, tempo.getBpm(), worst, compared);
+        CHECK(drums.isPlaying() && firstMs >= 0.0 && firstMs < 8.0 && std::abs(tempo.getBpm() - 125.0) < 2.0
+              && compared >= 5 && worst < 20.0, "follow start / tempo / phase");
+        tempo.setBpm(120.0);
+    }
+
+    // 3. Ассистент: анализ буфера -> паттерн по риффу и темп; генерация по стилю; вариация
+    {
+        tempo.setBpm(100.0);
+        ListenProcessor listener;
+        DrumMachine drums;
+        DrumAssistant assistant(drums, listener);
+
+        const auto riff = synthRiff(150.0, 4, "X.xxX.x.xx.xX.x.", 2, 3.0);
+        CHECK(assistant.analyzeBuffer(riff, sr) && std::abs(tempo.getBpm() - 150.0) < 1.0 && assistant.hasRiff()
+              && drums.getPattern().name.startsWith("Riff"), "assistant: riff -> pattern + tempo");
+
+        assistant.useRiff = false;
+        drums.setStyle(DrumGenerator::Style::blast);
+        assistant.generate();
+        const bool styled = drums.getPattern().name.startsWith("Blast");
+        const auto before = drums.getPattern();
+        assistant.vary();
+        CHECK(styled && drums.getPattern().name.endsWith("(var)"), "assistant: style generate / vary (%s)", drums.getPattern().name.toRawUTF8());
+        juce::ignoreUnused(before);
+
+        // LISTEN: запись идёт через FIFO узла
+        listener.setPlayConfigDetails(2, 2, sr, block);
+        listener.prepareToPlay(sr, block);
+        listener.setCapturing(true);
+        juce::AudioBuffer<float> buf(2, block); juce::MidiBuffer midi;
+        for (int b = 0; b < 40; ++b) { buf.clear(); buf.setSample(0, 5, 0.5f); listener.processBlock(buf, midi); }
+        std::vector<float> captured;
+        listener.drainCapture(captured);
+        CHECK(captured.size() == (size_t) (40 * block) && std::abs(captured[5] - 0.5f) < 1e-6f, "listen capture fifo");
+        tempo.setBpm(120.0);
+    }
+
+    clickFile.deleteFile();
+}
+
 // Отметка этапа для CI: при падении процесса последняя отметка показывает, где
 static void stage(const char* name)
 {
@@ -1445,6 +1793,12 @@ int main()
     testGlitch();
     stage("testDrums");
     testDrums();
+    stage("testRiffAnalysis");
+    testRiffAnalysis();
+    stage("testDrumGenerator");
+    testDrumGenerator();
+    stage("testDrumFillsAndFollow");
+    testDrumFillsAndFollow();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

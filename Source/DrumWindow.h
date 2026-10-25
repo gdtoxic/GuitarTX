@@ -3,13 +3,17 @@
 #include <JuceHeader.h>
 #include "DrumMachine.h"
 #include "DrumLibrary.h"
+#include "DrumAssistant.h"
 
-// Окно драм-машины: транспорт и темп, кит, паттерны (заводские / свои),
-// сетка шагов и настройки дорожек. Закрытие окна его только скрывает.
+// Окно драм-машины: транспорт и темп, кит, паттерны (заводские / свои), сбивки,
+// LISTEN / FOLLOW / анализ файла, генерация по стилю, сетка шагов и настройки дорожек.
+// Закрытие окна его только скрывает.
 class DrumWindow : public juce::DocumentWindow
 {
 public:
-    DrumWindow(DrumMachine& drums, DrumLibrary& library);
+    // lastDiFile - последняя DI-запись рекордера (кнопка Last DI)
+    DrumWindow(DrumMachine& drums, DrumLibrary& library, DrumAssistant& assistant,
+               std::function<juce::File()> lastDiFile);
     ~DrumWindow() override;
 
     void closeButtonPressed() override { setVisible(false); }

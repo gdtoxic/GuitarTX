@@ -15,6 +15,7 @@
 #include "MidiWindow.h"
 #include "DrumLibrary.h"
 #include "DrumWindow.h"
+#include "DrumAssistant.h"
 
 //==============================================================================
 class MainComponent : public juce::Component,
@@ -149,6 +150,7 @@ private:
     TunerComponent tuner { audioEngine.getTuner() };
 
     DrumLibrary drumLibrary;
+    DrumAssistant drumAssistant { audioEngine.getDrums(), audioEngine.getListener() };
     std::unique_ptr<DrumWindow> drumWindow;
 
     // MIDI: удаляется первым (колбэки ссылаются на UI выше)

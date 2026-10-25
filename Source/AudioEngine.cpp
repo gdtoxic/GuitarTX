@@ -66,6 +66,14 @@ AudioEngine::AudioEngine(const juce::XmlElement* savedDeviceState)
     requestTopologyUpdate();
 }
 
+int AudioEngine::getRoundTripLatency() const
+{
+    if (auto* device = deviceManager.getCurrentAudioDevice())
+        return device->getInputLatencyInSamples() + device->getOutputLatencyInSamples();
+
+    return 0;
+}
+
 //==============================================================================
 AudioEngine::~AudioEngine()
 {
@@ -101,6 +109,8 @@ void AudioEngine::createGraph()
     gain     = addFixedNode(std::make_unique<GainProcessor>(),            gainNode);
     master   = addFixedNode(std::make_unique<MasterProcessor>(),          masterNode);
     drums    = addFixedNode(std::make_unique<DrumMachine>(),              drumsNode);
+    listener = addFixedNode(std::make_unique<ListenProcessor>(),          listenNode);
+    drums->setOnsetSource(listener);
     outputGain = addFixedNode(std::make_unique<GainProcessor>(),          outputGainNode);
     fade     = addFixedNode(std::make_unique<FadeProcessor>(),            fadeNode);
     meterOut = addFixedNode(std::make_unique<MeterProcessor>("MeterOut"), meterOutNode);
@@ -115,9 +125,10 @@ void AudioEngine::rebuildConnections()
         graph.removeConnection(connection, UpdateKind::none);
 
     std::vector<Node::Ptr> chain;
-    chain.reserve(rack.size() + 10);
+    chain.reserve(rack.size() + 11);
 
     chain.push_back(recorderInNode);
+    chain.push_back(listenNode);
     chain.push_back(meterInNode);
     chain.push_back(tunerNode);
     chain.push_back(gainNode);

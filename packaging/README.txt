@@ -16,6 +16,8 @@ Recorder: REC button - DI (dry) + Wet (processed) WAV files in Documents\GuitarT
      Re-amp (menu next to REC): plays a DI file through the current preset and records it again.
 Drums: DRUMS button (play / stop next to it). Kits Doom / Metal / Industrial or your own WAV per track,
      32-step sequencer, 14 factory patterns, global tempo + Tap. Your patterns: %APPDATA%\GuitarTX\Patterns
+     LISTEN: play a riff, stop - tempo and a matching beat are set. FOLLOW: drums start with your first note
+     and follow your tempo. Generate by style, Vary, fills every 2 / 4 / 8 loops.
 Snapshots A/B: two sets of knob values / On-Off per preset (right-click A or B to copy).
 Preset browser: Browse button - search, favourites, tags, folders, import / export (.gtxpreset).
 Presets: %APPDATA%\GuitarTX\Presets

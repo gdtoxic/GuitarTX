@@ -4,6 +4,8 @@
 #include "DrumPattern.h"
 #include "DrumSynth.h"
 #include "GlobalTempo.h"
+#include "DrumGenerator.h"
+#include "ListenProcessor.h"
 
 // Драм-машина: узел графа после Master, барабаны добавляются к гитаре
 // (не проходят гитарную цепочку и мастер-компрессор; запись Wet их содержит, DI - нет).
@@ -12,6 +14,8 @@
 //  - секвенсор по общему темпу (GlobalTempo), swing, сетка 1/16, 1/8T, 1/16T, 1/32
 //  - смена паттерна во время игры - с начала следующего такта паттерна
 //  - Closed Hat глушит Open Hat; повторный удар по дорожке плавно гасит предыдущий
+//  - сбивка каждые N повторов паттерна (генерируется из паттерна по стилю), после неё - крэш
+//  - FOLLOW: старт с первой ноты гитары, дальше фаза и темп подтягиваются к атакам (ФАПЧ)
 //
 // Методы, кроме processBlock / prepareToPlay, вызываются из message thread.
 class DrumMachine : public ProcessorBase,
@@ -52,6 +56,30 @@ public:
     void setPattern(const DrumPattern& newPattern, bool immediate);
     bool hasQueuedPattern() const noexcept { return queueOutstanding.load(); }
 
+    // --- Стиль и сбивки
+    using Style = DrumGenerator::Style;
+    Style getStyle() const noexcept { return style; }
+    void  setStyle(Style newStyle);                 // перегенерирует сбивку
+
+    float getDensity() const noexcept      { return density; }
+    void  setDensity(float newDensity) noexcept { density = juce::jlimit(0.0f, 1.0f, newDensity); }
+
+    // 0 - без сбивок, иначе каждые 2 / 4 / 8 повторов паттерна
+    int  getFillEvery() const noexcept { return fillEvery.load(); }
+    void setFillEvery(int loops) noexcept { fillEvery.store(loops <= 1 ? 0 : juce::jmin(16, loops)); }
+    void newFill();                                 // другой вариант сбивки
+    const DrumPattern& getFill() const noexcept { return fill; }
+    bool isPlayingFill() const noexcept { return playingFillNow.load(); }
+
+    // --- FOLLOW
+    void setOnsetSource(ListenProcessor* source) noexcept { onsetSource = source; }
+    void setFollow(bool shouldFollow) noexcept;
+    bool isFollowing() const noexcept         { return following.load(); }
+    bool isWaitingForFirstNote() const noexcept { return startOnHit.load(); }
+
+    // Задержка вход + выход (сэмплы): атаки приходят позже на столько, сколько звук идёт "по кругу"
+    void setLatencyCompensation(int samples) noexcept { latency.store(juce::jmax(0, samples)); }
+
     // --- Звук
     Kit  getKit() const noexcept { return kit; }
     void setKit(Kit newKit);
@@ -91,13 +119,16 @@ private:
 
     using SoundPtr = std::shared_ptr<const Sound>;
 
+    using Steps = std::array<std::array<std::uint8_t, DrumPattern::maxSteps>, numTracks>;
+
     // Паттерн для аудиопотока: без строк и выделений памяти
     struct PatternData
     {
         int   length = 16;
         int   stepsPerBeat = 4;
         float swing = 0.0f;
-        std::array<std::array<std::uint8_t, DrumPattern::maxSteps>, numTracks> steps {};
+        Steps steps {};
+        Steps fill {};   // тот же паттерн со сбивкой в конце
     };
 
     struct Hit
@@ -112,7 +143,8 @@ private:
 
     static constexpr int hitsPerTrack = 2;
 
-    static PatternData toData(const DrumPattern& source) noexcept;
+    PatternData toData(const DrumPattern& source);
+    void republish();
     void publishSound(int track, SoundPtr sound);
     void renderSynthSounds();
     SoundPtr makeSampleSound(const juce::File& file, juce::String& error) const;
@@ -124,10 +156,14 @@ private:
     void renderHits(float* left, float* right, int start, int end);
     void startFade(Hit& hit) noexcept;
     double swingOffset(int step, double stepSamples) const noexcept;
+    void followOnsets(int numSamples, double stepSamples);
 
     // --- Message thread
-    DrumPattern pattern;
+    DrumPattern pattern, fill;
     Kit kit = Kit::doom;
+    Style style = Style::doom;
+    float density = 0.6f;
+    juce::int64 fillSeed = 1;
     std::array<juce::File, numTracks> sampleFiles;
     std::array<SoundPtr, numTracks> publishedSounds;   // то, что отдано аудиопотоку
     std::vector<SoundPtr> retiredSounds;                // живут, пока их держит аудиопоток
@@ -148,6 +184,12 @@ private:
     std::array<TrackSettings, numTracks> trackSettings;
 
     std::atomic<double> preparedRate { 0.0 };
+    std::atomic<int>  fillEvery { 4 };
+    std::atomic<bool> playingFillNow { false };
+    std::atomic<bool> following { false }, startOnHit { false };
+    std::atomic<int>  latency { 0 };
+    std::atomic<double> followBaseBpm { 120.0 };
+    ListenProcessor* onsetSource = nullptr;
 
     // --- Аудиопоток
     std::array<SoundPtr, numTracks> sounds;
@@ -155,8 +197,12 @@ private:
     PatternData active, queued;
     bool   hasQueued = false;
     bool   running = false;
+    bool   inFill = false, crashNext = false;
+    int    loopCount = 0;
     int    step = 0;
     double gridTime = 0.0;   // позиция сетки текущего шага относительно начала блока (сэмплы)
+    double startShift = 0.0; // FOLLOW: разовая поправка сетки после первого шага
+    int    startedAt = -1;   // FOLLOW: старт с ноты в этом блоке (смещение)
     double sampleRate = 48000.0;
     int    fadeSamples = 192;
     juce::AudioBuffer<float> mix;

@@ -47,14 +47,49 @@ DrumMachine::~DrumMachine()
     stopTimer();
 }
 
-DrumMachine::PatternData DrumMachine::toData(const DrumPattern& source) noexcept
+DrumMachine::PatternData DrumMachine::toData(const DrumPattern& source)
 {
+    fill = DrumGenerator::makeFill(source, style, fillSeed);
+
     PatternData data;
     data.length       = juce::jlimit(1, DrumPattern::maxSteps, source.length);
     data.stepsPerBeat = source.stepsPerBeat();
     data.swing        = juce::jlimit(0.0f, 75.0f, source.swing);
     data.steps        = source.steps;
+    data.fill         = fill.steps;
     return data;
+}
+
+void DrumMachine::republish()
+{
+    setPattern(pattern, true);
+}
+
+void DrumMachine::setStyle(Style newStyle)
+{
+    if (style == newStyle)
+        return;
+
+    style = newStyle;
+    republish();
+}
+
+void DrumMachine::newFill()
+{
+    fillSeed = juce::Random::getSystemRandom().nextInt64();
+    republish();
+}
+
+void DrumMachine::setFollow(bool shouldFollow) noexcept
+{
+    following.store(shouldFollow);
+    followBaseBpm.store(GlobalTempo::get().getBpm());
+
+    if (onsetSource != nullptr)
+        onsetSource->setDetecting(shouldFollow);
+
+    // Стоим - ждём первой ноты; уже играем - просто подстраиваемся
+    startOnHit.store(shouldFollow && ! playRequested.load());
 }
 
 //==============================================================================
@@ -234,6 +269,10 @@ std::unique_ptr<juce::XmlElement> DrumMachine::createState() const
     xml->setAttribute("kit", (int) kit);
     xml->setAttribute("level", (double) levelDb.load());
     xml->setAttribute("bpm", GlobalTempo::get().getBpm());
+    xml->setAttribute("style", (int) style);
+    xml->setAttribute("density", (double) density);
+    xml->setAttribute("fillEvery", fillEvery.load());
+    xml->setAttribute("fillSeed", juce::String(fillSeed));
 
     for (int t = 0; t < numTracks; ++t)
     {
@@ -263,6 +302,10 @@ void DrumMachine::restoreState(const juce::XmlElement& xml)
     setLevelDb((float) xml.getDoubleAttribute("level", -10.0));
 
     const auto newKit = (Kit) juce::jlimit(0, 2, xml.getIntAttribute("kit", 0));
+    style = (Style) juce::jlimit(0, DrumGenerator::numStyles - 1, xml.getIntAttribute("style", 0));
+    setDensity((float) xml.getDoubleAttribute("density", 0.6));
+    setFillEvery(xml.getIntAttribute("fillEvery", 4));
+    fillSeed = xml.getStringAttribute("fillSeed", "1").getLargeIntValue();
 
     for (auto* track : xml.getChildWithTagNameIterator("Track"))
     {
@@ -367,6 +410,59 @@ void DrumMachine::pullUpdates()
         queued = pendingQueued;
         hasQueued = true;
         queuedPending = false;
+    }
+}
+
+void DrumMachine::followOnsets(int numSamples, double stepSamples)
+{
+    if (onsetSource == nullptr)
+        return;
+
+    ListenProcessor::Onset onset;
+    const auto blockStart = onsetSource->getBlockStart();
+    const bool follow = following.load();
+
+    while (onsetSource->popOnset(onset))
+    {
+        if (! follow)
+            continue;
+
+        const double offset = (double) juce::jlimit<juce::int64>(0, numSamples - 1, onset.time - blockStart);
+
+        // Старт с первой ноты: шаг 0 - сразу, сетка дальше - с поправкой на задержку,
+        // чтобы следующие доли совпали с тем, что гитарист слышит и играет
+        if (startOnHit.load() && ! running)
+        {
+            startOnHit.store(false);
+            playRequested.store(true);
+            followBaseBpm.store(GlobalTempo::get().getBpm());
+            gridTime   = offset;
+            startedAt  = (int) offset;
+            startShift = -juce::jmin((double) latency.load(), 0.5 * stepSamples);
+            continue;
+        }
+
+        if (! running || inFill)
+            continue;
+
+        // Фаза атаки относительно сетки восьмых (для триолей - долей); атаки приходят позже
+        // на задержку вход + выход - вычитаем её
+        const int unit = active.stepsPerBeat % 2 == 0 ? active.stepsPerBeat / 2 : active.stepsPerBeat;
+        const double heard = offset - (double) latency.load();
+        const double position = (double) step + (heard - gridTime) / stepSamples;
+        const double nearest = std::round(position / unit) * unit;
+        const double error = (position - nearest) / unit;   // доля восьмой, + = гитара позже
+
+        if (std::abs(error) > 0.3)
+            continue;   // не на сетке - синкопа или случайная нота, не подстраиваемся
+
+        // ФАПЧ: фаза подтягивается сразу на 30 % ошибки, темп - медленно
+        gridTime += 0.3 * error * unit * stepSamples;
+
+        const double bpm  = GlobalTempo::get().getBpm();
+        const double base = followBaseBpm.load();
+        const double next = juce::jlimit(base * 0.7, base * 1.3, bpm * (1.0 - juce::jlimit(-0.015, 0.015, 0.06 * error)));
+        GlobalTempo::get().setBpm(next);
     }
 }
 
@@ -495,19 +591,31 @@ void DrumMachine::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             if ((mask & (1u << (unsigned) t)) != 0)
                 trigger(t, 1.0f);
 
+    const double stepSamples = GlobalTempo::get().getBeatSamples(sampleRate) / (double) juce::jmax(1, active.stepsPerBeat);
+
+    // FOLLOW: атаки гитары этого блока (в т.ч. старт с первой ноты)
+    followOnsets(numSamples, stepSamples);
+
     const bool shouldRun = playRequested.load();
 
     if (shouldRun && ! running)
     {
-        running  = true;
-        step     = 0;
-        gridTime = 0.0;
+        running   = true;
+        step      = 0;
+        loopCount = 0;
+        inFill    = crashNext = false;
+
+        if (startedAt < 0)
+            gridTime = 0.0;
+
+        startedAt = -1;
 
         if (hasQueued) { active = queued; hasQueued = false; queueOutstanding.store(false); }
     }
     else if (! shouldRun && running)
     {
         running = false;
+        playingFillNow.store(false);
         currentStep.store(-1);
     }
 
@@ -515,8 +623,6 @@ void DrumMachine::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffe
 
     if (running)
     {
-        const double stepSamples = GlobalTempo::get().getBeatSamples(sampleRate) / (double) juce::jmax(1, active.stepsPerBeat);
-
         // Шаги, которые попадают в этот блок
         while (true)
         {
@@ -529,19 +635,37 @@ void DrumMachine::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             renderHits(left, right, rendered, position);
             rendered = position;
 
+            const auto& steps = inFill ? active.fill : active.steps;
+
             for (int t = 0; t < numTracks; ++t)
-                trigger(t, DrumPattern::velocityGain(active.steps[(size_t) t][(size_t) step]));
+                trigger(t, DrumPattern::velocityGain(steps[(size_t) t][(size_t) step]));
+
+            // После сбивки - крэш на сильную долю, если в паттерне его там нет
+            if (step == 0 && crashNext)
+            {
+                if (steps[(size_t) DrumPattern::Track::crash][0] == 0)
+                    trigger((int) DrumPattern::Track::crash, 1.0f);
+
+                crashNext = false;
+            }
 
             currentStep.store(step);
 
-            gridTime += stepSamples;
+            gridTime += stepSamples + startShift;
+            startShift = 0.0;
 
             if (++step >= active.length)
             {
                 step = 0;
+                ++loopCount;
+                crashNext = inFill;
 
                 // Выбранный паттерн включается с начала такта
                 if (hasQueued) { active = queued; hasQueued = false; queueOutstanding.store(false); }
+
+                const int every = fillEvery.load();
+                inFill = every > 1 && (loopCount + 1) % every == 0;
+                playingFillNow.store(inFill);
             }
         }
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<JUCERPROJECT id="Wg1L62" name="GuitarTX" projectType="guiapp" useAppConfig="0" version="0.4.0"
+<JUCERPROJECT id="Wg1L62" name="GuitarTX" projectType="guiapp" useAppConfig="0" version="0.4.1"
               addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1">
   <MAINGROUP id="WBZhkT" name="GuitarTX">
     <GROUP id="{056E7338-7FB1-568E-9E02-5A011290C829}" name="Source">
@@ -93,6 +93,14 @@
       <FILE id="drlibC" name="DrumLibrary.cpp" compile="1" resource="0" file="Source/DrumLibrary.cpp"/>
       <FILE id="drwinH" name="DrumWindow.h" compile="0" resource="0" file="Source/DrumWindow.h"/>
       <FILE id="drwinC" name="DrumWindow.cpp" compile="1" resource="0" file="Source/DrumWindow.cpp"/>
+      <FILE id="rifanH" name="RiffAnalyzer.h" compile="0" resource="0" file="Source/RiffAnalyzer.h"/>
+      <FILE id="rifanC" name="RiffAnalyzer.cpp" compile="1" resource="0" file="Source/RiffAnalyzer.cpp"/>
+      <FILE id="drgenH" name="DrumGenerator.h" compile="0" resource="0" file="Source/DrumGenerator.h"/>
+      <FILE id="drgenC" name="DrumGenerator.cpp" compile="1" resource="0" file="Source/DrumGenerator.cpp"/>
+      <FILE id="lstprH" name="ListenProcessor.h" compile="0" resource="0" file="Source/ListenProcessor.h"/>
+      <FILE id="lstprC" name="ListenProcessor.cpp" compile="1" resource="0" file="Source/ListenProcessor.cpp"/>
+      <FILE id="drassH" name="DrumAssistant.h" compile="0" resource="0" file="Source/DrumAssistant.h"/>
+      <FILE id="drassC" name="DrumAssistant.cpp" compile="1" resource="0" file="Source/DrumAssistant.cpp"/>
       <FILE id="gtempH" name="GlobalTempo.h" compile="0" resource="0" file="Source/GlobalTempo.h"/>
     </GROUP>
     <GROUP id="{6D1B2F0A-9C3E-4E55-A1B7-3F2C9E8D4A10}" name="Resources">
