@@ -377,6 +377,13 @@ void MainComponent::setupMidi()
     {
         showTransientStatus("MIDI: tap tempo " + juce::String(juce::roundToInt(bpm)) + " BPM", 2.0);
     };
+    midi.onLearnTimeout = [this]
+    {
+        showTransientStatus("MIDI Learn cancelled: no controller moved in 15 s");
+
+        if (midiWindow != nullptr)
+            midiWindow->refresh();
+    };
     midi.onLearned       = [this](const MidiController::Mapping& m) { showTransientStatus("MIDI learned: " + midi.describe(m)); };
     midi.onMappingsChanged = [this]
     {
@@ -784,7 +791,6 @@ void MainComponent::showMidiMenu(EffectBase& effect, const juce::String& paramet
                            {
                                case 1:
                                    self.midi.startLearn(learnTarget);
-                                   self.learnTicks = 30 * 15;
                                    self.showTransientStatus("MIDI Learn: move a pedal or press a switch for  "
                                                             + self.midi.describeTarget(learnTarget), 15.0);
                                    break;
@@ -1018,13 +1024,6 @@ void MainComponent::timerCallback()
 
     updateMasterButton();
     updateDrumButtons();
-
-    // MIDI Learn: отмена, если за 15 с ничего не пришло
-    if (midi.isLearning() && --learnTicks <= 0)
-    {
-        midi.cancelLearn();
-        showTransientStatus("MIDI Learn cancelled: no controller moved");
-    }
 
     if (transientTicks > 0 && --transientTicks == 0 && ! midi.isLearning())
     {

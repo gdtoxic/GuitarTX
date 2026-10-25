@@ -160,7 +160,6 @@ private:
     // Временное сообщение в строке статуса (MIDI Learn и т.п.)
     juce::String transientStatus;
     int transientTicks = 0;
-    int learnTicks     = 0;
 
     std::unique_ptr<juce::XmlElement> lastSavedRack, lastSavedSession, lastSavedDrums;
     int saveTicks = 0;

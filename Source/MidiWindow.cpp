@@ -54,6 +54,8 @@ public:
 
         auto setupLearn = [this](juce::TextButton& button, MidiController::Kind kind)
         {
+            learnButtons.emplace_back(&button, kind);
+            button.setColour(juce::TextButton::buttonOnColourId, GuitarTXLookAndFeel::accent);
             button.onClick = [this, kind]
             {
                 controller.startLearn({ kind, {}, {} });
@@ -179,7 +181,8 @@ private:
         if (inputsLabel.getText() != inputs)
             inputsLabel.setText(inputs, juce::dontSendNotification);
 
-        juce::String last = controller.isLearning() ? "Learning... move a controller (CC)"
+        juce::String last = controller.isLearning() ? "Learning \"" + controller.describeTarget(*controller.getLearnTarget())
+                                                          + "\"... press the switch / move the controller (CC)"
                                                     : "Last message: " + (controller.getLastMessageText().isEmpty()
                                                                               ? juce::String("-")
                                                                               : controller.getLastMessageText());
@@ -202,7 +205,15 @@ private:
                                      ? "Mode: Hold / Latch" : "Mode: Toggle");
         clearButton.setEnabled(! mappings.empty());
         cancelButton.setEnabled(controller.isLearning());
+
+        // Подсветка кнопки, которая сейчас ждёт MIDI
+        const auto& target = controller.getLearnTarget();
+
+        for (auto& [button, kind] : learnButtons)
+            button->setToggleState(target.has_value() && target->kind == kind, juce::dontSendNotification);
     }
+
+    std::vector<std::pair<juce::TextButton*, MidiController::Kind>> learnButtons;
 
     MidiController& controller;
     juce::AudioDeviceManager& deviceManager;

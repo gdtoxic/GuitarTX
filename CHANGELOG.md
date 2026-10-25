@@ -21,6 +21,12 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
   The grid shows the fill while it plays.
 - MIDI: **Drums LISTEN**.
 
+### Fixed
+- MIDI window: the **Learn** buttons for actions (Next / Previous preset, Tuner, Record, Snapshot A/B, Tap tempo,
+  Drums) were cancelled about 30 ms after the click, so nothing could be learned. The 15 s Learn timeout now lives
+  in the MIDI controller and works for both the window and right-click Learn; the button that waits for MIDI is
+  highlighted and the window shows what is being learned.
+
 ## [0.4.0] - 2026-10-25
 
 ### Added

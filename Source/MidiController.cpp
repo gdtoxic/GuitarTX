@@ -123,6 +123,7 @@ void MidiController::postMessage(const juce::MidiMessage& message) noexcept
 void MidiController::timerCallback()
 {
     processPending();
+    checkLearnTimeout(juce::Time::getMillisecondCounterHiRes());
 }
 
 void MidiController::processPending()
@@ -286,7 +287,21 @@ void MidiController::tapTempo()
 // Learn
 void MidiController::startLearn(const LearnTarget& target)
 {
-    learnTarget = target;
+    learnTarget    = target;
+    learnStartedMs = juce::Time::getMillisecondCounterHiRes();
+}
+
+bool MidiController::checkLearnTimeout(double nowMs)
+{
+    if (! learnTarget.has_value() || nowMs - learnStartedMs < learnTimeoutMs)
+        return false;
+
+    learnTarget.reset();
+
+    if (onLearnTimeout)
+        onLearnTimeout();
+
+    return true;
 }
 
 void MidiController::cancelLearn()

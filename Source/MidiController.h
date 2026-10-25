@@ -52,9 +52,16 @@ public:
     void detach();
 
     // --- Learn (message thread)
+    // Learn ждёт сообщения не дольше learnTimeoutMs, потом отменяется сам (onLearnTimeout)
+    static constexpr double learnTimeoutMs = 15000.0;
+
     void startLearn(const LearnTarget& target);
     void cancelLearn();
     bool isLearning() const noexcept { return learnTarget.has_value(); }
+    const std::optional<LearnTarget>& getLearnTarget() const noexcept { return learnTarget; }
+
+    // Проверка таймаута (вызывается таймером; для тестов - с явным временем). true - Learn отменён
+    bool checkLearnTimeout(double nowMs);
 
     // --- Привязки (message thread)
     const std::vector<Mapping>& getMappings() const noexcept { return mappings; }
@@ -84,6 +91,7 @@ public:
     std::function<void()>                onToggleDrums;
     std::function<void()>                onListen;          // LISTEN драм-машины
     std::function<void(const Mapping&)>  onLearned;
+    std::function<void()>                onLearnTimeout;    // за learnTimeoutMs ничего не пришло
     std::function<void()>                onMappingsChanged; // сохранить настройки
     std::function<void()>                onActivity;        // пришло сообщение
 
@@ -118,6 +126,7 @@ private:
 
     std::vector<Mapping> mappings;
     std::optional<LearnTarget> learnTarget;
+    double learnStartedMs = 0.0;
 
     // Последнее значение каждого CC (для Momentary-футсвитчей: ловим нажатие, а не отпускание)
     std::array<int, 128> lastValues {};

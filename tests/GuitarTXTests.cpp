@@ -1755,6 +1755,52 @@ static void testDrumFillsAndFollow()
     clickFile.deleteFile();
 }
 
+// Learn для всех действий (кнопки окна MIDI): назначение, срабатывание, таймаут
+static void testMidiLearnActions()
+{
+    AudioEngine engine;
+    MidiController midi(engine);
+    using K = MidiController::Kind;
+
+    std::map<K, int> fired;
+    midi.onPresetStep     = [&](int d) { ++fired[d > 0 ? K::nextPreset : K::previousPreset]; };
+    midi.onToggleTuner    = [&] { ++fired[K::tuner]; };
+    midi.onToggleRecord   = [&] { ++fired[K::record]; };
+    midi.onToggleSnapshot = [&] { ++fired[K::snapshot]; };
+    midi.onToggleDrums    = [&] { ++fired[K::drums]; };
+    midi.onListen         = [&] { ++fired[K::listen]; };
+    bool timedOut = false;
+    midi.onLearnTimeout   = [&] { timedOut = true; };
+
+    auto cc = [&](int controller, int value)
+    {
+        midi.postMessage(juce::MidiMessage::controllerEvent(1, controller, value));
+        midi.processPending();
+    };
+
+    const std::vector<K> kinds { K::nextPreset, K::previousPreset, K::tuner, K::record, K::snapshot, K::drums, K::listen };
+    int controller = 40;
+    bool ok = true;
+
+    for (auto kind : kinds)
+    {
+        midi.startLearn({ kind, {}, {} });
+        // Пока ждём - таймер не отменяет Learn (так было: окно MIDI сбрасывалось через ~30 мс)
+        ok = ok && ! midi.checkLearnTimeout(juce::Time::getMillisecondCounterHiRes() + 1000.0) && midi.isLearning();
+        cc(controller, 127); cc(controller, 0);      // назначение
+        cc(controller, 127); cc(controller, 0);      // нажатие
+        ok = ok && ! midi.isLearning() && fired[kind] == 1;
+        ++controller;
+    }
+
+    CHECK(ok && midi.getMappings().size() == kinds.size(), "learn all actions (%d mappings)", (int) midi.getMappings().size());
+
+    midi.startLearn({ K::snapshot, {}, {} });
+    const bool cancelled = midi.checkLearnTimeout(juce::Time::getMillisecondCounterHiRes() + MidiController::learnTimeoutMs + 10.0);
+    CHECK(cancelled && timedOut && ! midi.isLearning(), "learn timeout");
+    std::printf("MIDI learn: %d actions learned and triggered, timeout OK\n", (int) kinds.size());
+}
+
 // Отметка этапа для CI: при падении процесса последняя отметка показывает, где
 static void stage(const char* name)
 {
@@ -1791,6 +1837,8 @@ int main()
     testPresetLibrary();
     stage("testGlitch");
     testGlitch();
+    stage("testMidiLearnActions");
+    testMidiLearnActions();
     stage("testDrums");
     testDrums();
     stage("testRiffAnalysis");
