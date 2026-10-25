@@ -141,7 +141,9 @@ private:
     // Последнее значение каждого CC (для Momentary-футсвитчей: ловим нажатие, а не отпускание)
     std::array<int, 256> lastValues {};
     juce::StringArray knownInputs;   // входы, которые уже видели (новые включаются сами)
-    int scanTicks = 0;
+
+    // Уведомление системы о смене списка MIDI-устройств (без опроса)
+    juce::MidiDeviceListConnection deviceListConnection;
 
     juce::String lastMessageText;
 

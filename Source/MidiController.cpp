@@ -90,6 +90,9 @@ void MidiController::attach(juce::AudioDeviceManager& manager)
     // Пустой идентификатор = все включённые входы
     deviceManager->addMidiInputDeviceCallback({}, this);
     scanInputs();
+
+    // Список входов перечитывается только когда система сообщает об изменении (вызов в message thread)
+    deviceListConnection = juce::MidiDeviceListConnection::make([this] { scanInputs(); });
 }
 
 void MidiController::setInputEnabled(const juce::String& identifier, bool enabled)
@@ -128,6 +131,8 @@ void MidiController::scanInputs()
 
 void MidiController::detach()
 {
+    deviceListConnection.reset();
+
     if (deviceManager != nullptr)
         deviceManager->removeMidiInputDeviceCallback({}, this);
 
@@ -169,13 +174,6 @@ void MidiController::timerCallback()
 {
     processPending();
     checkLearnTimeout(juce::Time::getMillisecondCounterHiRes());
-
-    // Раз в 2 с: появились ли новые MIDI-входы
-    if (++scanTicks >= 2 * processRateHz)
-    {
-        scanTicks = 0;
-        scanInputs();
-    }
 }
 
 void MidiController::processPending()
