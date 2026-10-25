@@ -26,6 +26,12 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
   Drums) were cancelled about 30 ms after the click, so nothing could be learned. The 15 s Learn timeout now lives
   in the MIDI controller and works for both the window and right-click Learn; the button that waits for MIDI is
   highlighted and the window shows what is being learned.
+- MIDI input: **Note On / Off** now work as switches and can be learned (many DIY controllers — Arduino via
+  Hairless MIDI — send notes, not CC); before, notes were dropped silently. Other messages are shown in the
+  MIDI window as "(not used)", so you can see what arrives.
+- **New MIDI inputs are enabled automatically** when they appear (a loopMIDI port for Hairless MIDI created
+  after the first start, a controller plugged in later); an input you turned off stays off.
+  MIDI window: **Inputs ▾** turns inputs on / off directly.
 
 ## [0.4.0] - 2026-10-25
 

@@ -59,6 +59,15 @@ namespace
     }
 }
 
+juce::String MidiController::sourceName(int controller)
+{
+    if (! isNote(controller))
+        return "CC " + juce::String(controller);
+
+    const int note = controller - noteBase;
+    return "Note " + juce::String(note) + " (" + juce::MidiMessage::getMidiNoteName(note, true, true, 3) + ")";
+}
+
 //==============================================================================
 MidiController::MidiController(AudioEngine& engineToControl)
     : engine(engineToControl)
@@ -80,6 +89,41 @@ void MidiController::attach(juce::AudioDeviceManager& manager)
 
     // Пустой идентификатор = все включённые входы
     deviceManager->addMidiInputDeviceCallback({}, this);
+    scanInputs();
+}
+
+void MidiController::setInputEnabled(const juce::String& identifier, bool enabled)
+{
+    if (deviceManager == nullptr)
+        return;
+
+    deviceManager->setMidiInputDeviceEnabled(identifier, enabled);
+    knownInputs.addIfNotAlreadyThere(identifier);
+
+    if (onMappingsChanged)
+        onMappingsChanged();
+}
+
+void MidiController::scanInputs()
+{
+    if (deviceManager == nullptr)
+        return;
+
+    bool changed = false;
+
+    for (const auto& device : juce::MidiInput::getAvailableDevices())
+    {
+        if (knownInputs.contains(device.identifier))
+            continue;
+
+        knownInputs.add(device.identifier);
+        deviceManager->setMidiInputDeviceEnabled(device.identifier, true);
+        lastMessageText = "New MIDI input enabled: " + device.name;
+        changed = true;
+    }
+
+    if (changed && onMappingsChanged)
+        onMappingsChanged();
 }
 
 void MidiController::detach()
@@ -99,8 +143,9 @@ void MidiController::handleIncomingMidiMessage(juce::MidiInput*, const juce::Mid
 
 void MidiController::postMessage(const juce::MidiMessage& message) noexcept
 {
-    // Нужны только CC и Program Change - остальное (ноты, clock, SysEx) не пускаем в очередь
-    if (! message.isController() && ! message.isProgramChange())
+    // Clock / Active Sensing / SysEx - не нужны и шли бы потоком; остальное - в очередь
+    // (ноты для футсвитчей, прочее - для строки "последнее сообщение")
+    if (message.isMidiClock() || message.isActiveSense() || message.isSysEx() || message.getRawDataSize() > 3)
         return;
 
     const juce::SpinLock::ScopedLockType lock(writerLock());
@@ -124,6 +169,13 @@ void MidiController::timerCallback()
 {
     processPending();
     checkLearnTimeout(juce::Time::getMillisecondCounterHiRes());
+
+    // Раз в 2 с: появились ли новые MIDI-входы
+    if (++scanTicks >= 2 * processRateHz)
+    {
+        scanTicks = 0;
+        scanInputs();
+    }
 }
 
 void MidiController::processPending()
@@ -174,7 +226,34 @@ void MidiController::apply(const juce::MidiMessage& message)
             applyController(channel, controller, value);
 
         lastValues[(size_t) controller] = value;
+        return;
     }
+
+    // Ноты: многие самодельные контроллеры (Arduino + Hairless) шлют Note On / Off вместо CC
+    if (message.isNoteOnOrOff())
+    {
+        const int  index = noteBase + message.getNoteNumber();
+        const bool on    = message.isNoteOn();
+        const int  value = on ? juce::jmax(64, (int) message.getVelocity()) : 0;
+
+        lastMessageText = "Ch " + juce::String(channel) + "  " + sourceName(index) + (on ? " on" : " off");
+
+        if (learnTarget.has_value())
+        {
+            if (on)
+                learn(channel, index);
+        }
+        else
+        {
+            applyController(channel, index, value);
+        }
+
+        lastValues[(size_t) index] = value;
+        return;
+    }
+
+    // Остальное не используется, но видно в окне MIDI - чтобы понять, что приходит
+    lastMessageText = "Ch " + juce::String(channel) + "  " + message.getDescription() + "  (not used)";
 }
 
 void MidiController::applyController(int channel, int controller, int value)
@@ -449,7 +528,7 @@ juce::String MidiController::describeTarget(const LearnTarget& target) const
 
 juce::String MidiController::describe(const Mapping& mapping) const
 {
-    juce::String text = "CC " + juce::String(mapping.controller);
+    juce::String text = sourceName(mapping.controller);
 
     if (mapping.channel != 0)
         text << " (ch " << mapping.channel << ")";
@@ -470,13 +549,20 @@ std::unique_ptr<juce::XmlElement> MidiController::createXml() const
     for (const auto& m : mappings)
     {
         auto* child = xml->createNewChildElement(mappingTag);
-        child->setAttribute("cc", m.controller);
+        if (isNote(m.controller))
+            child->setAttribute("note", m.controller - noteBase);
+        else
+            child->setAttribute("cc", m.controller);
+
         child->setAttribute("channel", m.channel);
         child->setAttribute("kind", kindToString(m.kind));
         child->setAttribute("effect", m.effectType);
         child->setAttribute("parameter", m.parameterId);
         child->setAttribute("mode", m.switchMode == SwitchMode::latching ? "latching" : "momentary");
     }
+
+    for (const auto& id : knownInputs)
+        xml->createNewChildElement("Input")->setAttribute("id", id);
 
     return xml;
 }
@@ -496,7 +582,8 @@ void MidiController::restoreFromXml(const juce::XmlElement& xml)
             continue;
 
         Mapping m;
-        m.controller  = juce::jlimit(0, 127, child->getIntAttribute("cc"));
+        m.controller  = child->hasAttribute("note") ? noteBase + juce::jlimit(0, 127, child->getIntAttribute("note"))
+                                                    : juce::jlimit(0, 127, child->getIntAttribute("cc"));
         m.channel     = juce::jlimit(0, 16, child->getIntAttribute("channel"));
         m.kind        = *kind;
         m.effectType  = child->getStringAttribute("effect");
@@ -504,4 +591,9 @@ void MidiController::restoreFromXml(const juce::XmlElement& xml)
         m.switchMode  = child->getStringAttribute("mode") == "latching" ? SwitchMode::latching : SwitchMode::momentary;
         mappings.push_back(m);
     }
+
+    knownInputs.clear();
+
+    for (auto* input : xml.getChildWithTagNameIterator("Input"))
+        knownInputs.addIfNotAlreadyThere(input->getStringAttribute("id"));
 }

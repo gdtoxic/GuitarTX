@@ -20,6 +20,10 @@ public:
         settingsButton.onClick = [this] { if (openAudioSettings) openAudioSettings(); };
         addAndMakeVisible(settingsButton);
 
+        inputsButton.setTooltip("Turn MIDI inputs on / off (virtual ports like loopMIDI for Hairless MIDI too)");
+        inputsButton.onClick = [this] { showInputsMenu(); };
+        addAndMakeVisible(inputsButton);
+
         lastLabel.setFont(juce::FontOptions(13.0f, juce::Font::bold));
         lastLabel.setColour(juce::Label::textColourId, GuitarTXLookAndFeel::accent);
         addAndMakeVisible(lastLabel);
@@ -76,7 +80,7 @@ public:
         cancelButton.onClick = [this] { controller.cancelLearn(); updateState(); };
         addAndMakeVisible(cancelButton);
 
-        hint.setText("Right-click any knob -> MIDI Learn, then move your pedal / controller.\n"
+        hint.setText("Right-click any knob -> MIDI Learn, then move your pedal / controller (CC or Note On/Off).\n"
                      "Right-click a pedal's panel title -> footswitch On/Off.\n"
                      "Program Change N selects preset N+1 in the preset list (factory first, then user).",
                      juce::dontSendNotification);
@@ -110,6 +114,8 @@ public:
 
         auto inputs = area.removeFromTop(26);
         settingsButton.setBounds(inputs.removeFromRight(160));
+        inputs.removeFromRight(6);
+        inputsButton.setBounds(inputs.removeFromRight(90));
         inputsLabel.setBounds(inputs);
 
         area.removeFromTop(4);
@@ -221,6 +227,32 @@ private:
 
     juce::Label title, inputsLabel, lastLabel, hint;
     juce::TextButton settingsButton { "Audio / MIDI Settings" };
+    juce::TextButton inputsButton { juce::String::fromUTF8("Inputs \xe2\x96\xbe") };
+
+    void showInputsMenu()
+    {
+        juce::PopupMenu menu;
+        menu.addSectionHeader("MIDI inputs");
+        const auto devices = juce::MidiInput::getAvailableDevices();
+
+        if (devices.isEmpty())
+            menu.addItem(1000, "No MIDI inputs found (for Hairless MIDI: create a loopMIDI port)", false);
+
+        for (int i = 0; i < devices.size(); ++i)
+            menu.addItem(i + 1, devices[i].name, true, deviceManager.isMidiInputDeviceEnabled(devices[i].identifier));
+
+        juce::Component::SafePointer<Content> safeThis(this);
+
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&inputsButton), [safeThis, devices](int result)
+        {
+            if (safeThis == nullptr || ! juce::isPositiveAndBelow(result - 1, devices.size()))
+                return;
+
+            const auto& device = devices[result - 1];
+            safeThis->controller.setInputEnabled(device.identifier,
+                                                 ! safeThis->deviceManager.isMidiInputDeviceEnabled(device.identifier));
+        });
+    }
     juce::ListBox list;
     juce::TextButton removeButton { "Remove" }, modeButton { "Mode: Toggle" }, clearButton { "Clear all" };
     juce::TextButton learnNext { "Learn: Next preset" }, learnPrevious { "Learn: Prev preset" },

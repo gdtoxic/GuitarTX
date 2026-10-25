@@ -1795,6 +1795,32 @@ static void testMidiLearnActions()
 
     CHECK(ok && midi.getMappings().size() == kinds.size(), "learn all actions (%d mappings)", (int) midi.getMappings().size());
 
+    // Ноты вместо CC (Arduino через Hairless MIDI часто шлёт Note On / Off)
+    {
+        auto note = [&](int number, bool on)
+        {
+            midi.postMessage(on ? juce::MidiMessage::noteOn(1, number, (juce::uint8) 100) : juce::MidiMessage::noteOff(1, number));
+            midi.processPending();
+        };
+
+        const int before = fired[K::snapshot];
+        midi.startLearn({ K::snapshot, {}, {} });
+        note(60, true); note(60, false);      // назначение
+        note(60, true); note(60, false);      // нажатие
+        note(60, true); note(60, false);      // ещё раз
+        const auto* mapping = midi.findMapping({ K::snapshot, {}, {} });
+        std::printf("MIDI learn by note: %s, fired %d\n", mapping != nullptr ? midi.describe(*mapping).toRawUTF8() : "none",
+                    fired[K::snapshot] - before);
+        CHECK(mapping != nullptr && MidiController::isNote(mapping->controller) && fired[K::snapshot] - before == 2,
+              "learn by note on / off");
+
+        auto xml = midi.createXml();
+        MidiController other(engine);
+        other.restoreFromXml(*xml);
+        const auto* restored = other.findMapping({ K::snapshot, {}, {} });
+        CHECK(restored != nullptr && restored->controller == mapping->controller, "note mapping saved");
+    }
+
     midi.startLearn({ K::snapshot, {}, {} });
     const bool cancelled = midi.checkLearnTimeout(juce::Time::getMillisecondCounterHiRes() + MidiController::learnTimeoutMs + 10.0);
     CHECK(cancelled && timedOut && ! midi.isLearning(), "learn timeout");

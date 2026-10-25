@@ -28,13 +28,17 @@ public:
 
     struct Mapping
     {
-        int          controller = 0;      // номер CC 0..127
+        int          controller = 0;      // CC 0..127, нота: noteBase + номер (Note On = нажатие, Note Off = отпускание)
         int          channel    = 0;      // 0 = любой канал
         Kind         kind       = Kind::parameter;
         juce::String effectType;          // для parameter / footswitch
         juce::String parameterId;         // для parameter
         SwitchMode   switchMode = SwitchMode::momentary;
     };
+
+    static constexpr int noteBase = 128;
+    static bool isNote(int controller) noexcept { return controller >= noteBase; }
+    static juce::String sourceName(int controller);   // "CC 20" / "Note 60 (C3)"
 
     // Что назначается при MIDI Learn
     struct LearnTarget
@@ -47,9 +51,15 @@ public:
     explicit MidiController(AudioEngine& engineToControl);
     ~MidiController() override;
 
-    // Подписка на все включённые MIDI-входы устройства
+    // Подписка на все включённые MIDI-входы устройства. Новые входы (виртуальный порт
+    // loopMIDI, мост Hairless, подключённый контроллер) включаются сами, как только появятся;
+    // вход, выключенный вручную, остаётся выключенным
     void attach(juce::AudioDeviceManager& deviceManager);
     void detach();
+
+    // Включить / выключить вход (окно MIDI)
+    void setInputEnabled(const juce::String& identifier, bool enabled);
+    void scanInputs();
 
     // --- Learn (message thread)
     // Learn ждёт сообщения не дольше learnTimeoutMs, потом отменяется сам (onLearnTimeout)
@@ -129,7 +139,9 @@ private:
     double learnStartedMs = 0.0;
 
     // Последнее значение каждого CC (для Momentary-футсвитчей: ловим нажатие, а не отпускание)
-    std::array<int, 128> lastValues {};
+    std::array<int, 256> lastValues {};
+    juce::StringArray knownInputs;   // входы, которые уже видели (новые включаются сами)
+    int scanTicks = 0;
 
     juce::String lastMessageText;
 
