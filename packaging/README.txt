@@ -10,7 +10,8 @@ Run: GuitarTX.exe (no installer needed).
 Audio: Settings -> pick your audio interface (ASIO recommended), input/output channels.
 Tuner: TUNER button (Esc to close). Mutes the output while open (can be turned off).
 MIDI: MIDI button. Right-click a knob -> MIDI Learn (expression pedal), right-click a pedal title -> footswitch.
-     Footswitch mode Toggle (each press) or Hold / Latch (on while pressed - hold to stutter / freeze).
+     Switch mode Toggle (each press) or Hold (on while pressed, off when released): pedals, snapshot B,
+     tuner, record, drums, LISTEN. Double-click a row in the MIDI window to switch.
      Tap tempo for Glitch. Program Change N -> preset N+1. Enable MIDI inputs in Settings.
 Recorder: REC button - DI (dry) + Wet (processed) WAV files in Documents\GuitarTX\Recordings.
      Re-amp (menu next to REC): plays a DI file through the current preset and records it again.

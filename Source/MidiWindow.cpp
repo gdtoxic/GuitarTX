@@ -45,12 +45,13 @@ public:
             const int row = list.getSelectedRow();
             const auto& mappings = controller.getMappings();
 
-            if (row >= 0 && row < (int) mappings.size() && mappings[(size_t) row].kind == MidiController::Kind::footswitch)
+            if (row >= 0 && row < (int) mappings.size() && MidiController::supportsHold(mappings[(size_t) row].kind))
                 controller.setSwitchMode((size_t) row, mappings[(size_t) row].switchMode == MidiController::SwitchMode::momentary
                                                            ? MidiController::SwitchMode::latching
                                                            : MidiController::SwitchMode::momentary);
         };
-        modeButton.setTooltip("Footswitch mode. Toggle: each press switches the pedal. Hold / Latch: on while CC >= 64 (hold a momentary switch for Stutter / Freeze)");
+        modeButton.setTooltip("Switch mode (also: double-click the row). Toggle: each press switches on / off. "
+                              "Hold: on while the switch is pressed, off when released (pedal, snapshot B, tuner, record, drums, LISTEN)");
         addAndMakeVisible(modeButton);
 
         clearButton.onClick = [this] { controller.clearMappings(); };
@@ -172,6 +173,9 @@ private:
 
     void selectedRowsChanged(int) override { updateState(); }
 
+    // Двойной клик по строке - переключить Toggle / Hold
+    void listBoxItemDoubleClicked(int row, const juce::MouseEvent&) override { list.selectRow(row); modeButton.triggerClick(); }
+
     void timerCallback() override
     {
         // Входы и последнее сообщение могут меняться без нашего участия
@@ -203,12 +207,12 @@ private:
         const int  row      = list.getSelectedRow();
         const auto& mappings = controller.getMappings();
         const bool hasRow   = row >= 0 && row < (int) mappings.size();
-        const bool isSwitch = hasRow && mappings[(size_t) row].kind == MidiController::Kind::footswitch;
+        const bool isSwitch = hasRow && MidiController::supportsHold(mappings[(size_t) row].kind);
 
         removeButton.setEnabled(hasRow);
         modeButton.setEnabled(isSwitch);
-        modeButton.setButtonText(isSwitch && mappings[(size_t) row].switchMode == MidiController::SwitchMode::latching
-                                     ? "Mode: Hold / Latch" : "Mode: Toggle");
+        modeButton.setButtonText("Mode: " + MidiController::modeName(isSwitch ? mappings[(size_t) row].switchMode
+                                                                              : MidiController::SwitchMode::momentary));
         clearButton.setEnabled(! mappings.empty());
         cancelButton.setEnabled(controller.isLearning());
 

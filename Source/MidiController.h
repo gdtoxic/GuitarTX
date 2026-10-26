@@ -10,7 +10,7 @@
 //    а не к пресету: педаль на "Pitch: Position" работает в любом пресете,
 //    где есть Pitch (берётся первый такой эффект в цепочке).
 //  - CC -> вкл/выкл педали (футсвитч): Toggle - каждое нажатие переключает,
-//    Hold / Latch - педаль включена, пока значение >= 64: с кнопкой без фиксации
+//    Hold - педаль включена, пока значение >= 64 (Note On): с кнопкой без фиксации
 //    (momentary) это "держу - работает" (Stutter, Freeze), с фиксирующей - обычный вкл/выкл.
 //  - CC -> действие: следующий / предыдущий пресет, тюнер, запись, снапшот A/B,
 //    Tap tempo (общий темп + BPM всех Glitch без Sync), драм-машина Play / Stop и LISTEN.
@@ -23,8 +23,13 @@ class MidiController : private juce::MidiInputCallback,
 {
 public:
     enum class Kind { parameter, footswitch, nextPreset, previousPreset, tuner, record, snapshot, tapTempo, drums, listen };
-    // Имена в XML сохранены для совместимости: momentary = Toggle, latching = Hold / Latch
+    // Toggle - каждое нажатие переключает; Hold - включено, пока кнопка нажата (отпустил - выкл).
+    // Имена в XML сохранены для совместимости: momentary = Toggle, latching = Hold
     enum class SwitchMode { momentary, latching };
+
+    // Для каких назначений есть режим Hold: педаль On/Off, снапшот B, тюнер, запись, барабаны, LISTEN
+    static bool supportsHold(Kind kind) noexcept;
+    static juce::String modeName(SwitchMode mode);
 
     struct Mapping
     {
@@ -79,6 +84,7 @@ public:
     void removeMappingsFor(const LearnTarget& target);
     void clearMappings();
     void setSwitchMode(size_t index, SwitchMode mode);
+    void setSwitchMode(const LearnTarget& target, SwitchMode mode);
     const Mapping* findMapping(const LearnTarget& target) const;
 
     // Человекочитаемое описание: "CC 11 -> Pitch: Position"
@@ -100,6 +106,7 @@ public:
     std::function<void(double bpm)>      onTapTempo;        // применённый темп
     std::function<void()>                onToggleDrums;
     std::function<void()>                onListen;          // LISTEN драм-машины
+    std::function<void(Kind, bool down)> onHold;            // режим Hold: нажали (true) / отпустили (false)
     std::function<void(const Mapping&)>  onLearned;
     std::function<void()>                onLearnTimeout;    // за learnTimeoutMs ничего не пришло
     std::function<void()>                onMappingsChanged; // сохранить настройки

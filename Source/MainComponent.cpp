@@ -373,6 +373,56 @@ void MainComponent::setupMidi()
     };
     midi.onToggleDrums = [this] { toggleDrums(); };
     midi.onListen      = [this] { drumAssistant.toggleListen(); };
+
+    // Режим Hold: пока держишь - включено
+    midi.onHold = [this](MidiController::Kind kind, bool down)
+    {
+        using K = MidiController::Kind;
+        auto& recorder = audioEngine.getRecorder();
+
+        switch (kind)
+        {
+            case K::snapshot:
+                selectSnapshot(down ? 1 : 0);
+                showTransientStatus(juce::String("MIDI: snapshot ") + (down ? "B (hold)" : "A"), 2.0);
+                break;
+
+            case K::tuner:
+                setTunerVisible(down);
+                break;
+
+            case K::record:
+                if (down != recorder.isRecording())
+                    toggleRecording();
+                break;
+
+            case K::drums:
+                if (down != audioEngine.getDrums().isPlaying())
+                    toggleDrums();
+                break;
+
+            case K::listen:
+            {
+                // Нажал - слушает, отпустил - анализ (или отмена, если так и не сыграл)
+                const auto state = drumAssistant.getListenState();
+
+                if (down && state == DrumAssistant::ListenState::idle)
+                    drumAssistant.toggleListen();
+                else if (! down && state == DrumAssistant::ListenState::recording)
+                    drumAssistant.toggleListen();
+                else if (! down && state == DrumAssistant::ListenState::waiting)
+                    drumAssistant.cancelListen();
+                break;
+            }
+
+            case K::parameter:
+            case K::footswitch:
+            case K::nextPreset:
+            case K::previousPreset:
+            case K::tapTempo:
+                break;
+        }
+    };
     midi.onTapTempo = [this](double bpm)
     {
         showTransientStatus("MIDI: tap tempo " + juce::String(juce::roundToInt(bpm)) + " BPM", 2.0);
@@ -765,11 +815,22 @@ void MainComponent::showMidiMenu(EffectBase& effect, const juce::String& paramet
 
     juce::PopupMenu menu;
     menu.addSectionHeader(midi.describeTarget(learnTarget));
-    menu.addItem(1, existing != nullptr ? "MIDI Learn  (now CC " + juce::String(existing->controller) + ")"
+    menu.addItem(1, existing != nullptr ? "MIDI Learn  (now " + MidiController::sourceName(existing->controller) + ")"
                                         : juce::String("MIDI Learn"));
 
     if (existing != nullptr)
-        menu.addItem(2, "Remove MIDI (CC " + juce::String(existing->controller) + ")");
+    {
+        menu.addItem(2, "Remove MIDI (" + MidiController::sourceName(existing->controller) + ")");
+
+        if (MidiController::supportsHold(learnTarget.kind))
+        {
+            menu.addSeparator();
+            menu.addItem(5, MidiController::modeName(MidiController::SwitchMode::momentary), true,
+                         existing->switchMode == MidiController::SwitchMode::momentary);
+            menu.addItem(6, MidiController::modeName(MidiController::SwitchMode::latching), true,
+                         existing->switchMode == MidiController::SwitchMode::latching);
+        }
+    }
 
     if (midi.isLearning())
         menu.addItem(3, "Cancel MIDI Learn");
@@ -807,6 +868,15 @@ void MainComponent::showMidiMenu(EffectBase& effect, const juce::String& paramet
 
                                case 4:
                                    self.showMidiWindow();
+                                   break;
+
+                               case 5:
+                               case 6:
+                                   self.midi.setSwitchMode(learnTarget, result == 6 ? MidiController::SwitchMode::latching
+                                                                                    : MidiController::SwitchMode::momentary);
+                                   self.showTransientStatus("MIDI " + self.midi.describeTarget(learnTarget) + ": "
+                                                            + MidiController::modeName(result == 6 ? MidiController::SwitchMode::latching
+                                                                                                   : MidiController::SwitchMode::momentary));
                                    break;
 
                                default:

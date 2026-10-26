@@ -59,6 +59,33 @@ namespace
     }
 }
 
+bool MidiController::supportsHold(Kind kind) noexcept
+{
+    switch (kind)
+    {
+        case Kind::footswitch:
+        case Kind::tuner:
+        case Kind::record:
+        case Kind::snapshot:
+        case Kind::drums:
+        case Kind::listen:
+            return true;
+
+        case Kind::parameter:
+        case Kind::nextPreset:
+        case Kind::previousPreset:
+        case Kind::tapTempo:
+            return false;
+    }
+
+    return false;
+}
+
+juce::String MidiController::modeName(SwitchMode mode)
+{
+    return mode == SwitchMode::latching ? "Hold (on while pressed)" : "Toggle (press on / press off)";
+}
+
 juce::String MidiController::sourceName(int controller)
 {
     if (! isNote(controller))
@@ -258,12 +285,22 @@ void MidiController::applyController(int channel, int controller, int value)
 {
     const int  previous = lastValues[(size_t) controller];
     const bool pressed  = value >= 64;
-    const bool newPress = pressed && previous < 64;   // фронт нажатия (Momentary)
+    const bool newPress = pressed && previous < 64;   // фронт нажатия (Toggle)
+    const bool changed  = pressed != (previous >= 64);   // нажали или отпустили (Hold)
 
     for (const auto& mapping : mappings)
     {
         if (mapping.controller != controller || (mapping.channel != 0 && mapping.channel != channel))
             continue;
+
+        // Hold для действий: нажали - включить, отпустили - выключить
+        if (mapping.kind != Kind::footswitch && supportsHold(mapping.kind) && mapping.switchMode == SwitchMode::latching)
+        {
+            if (changed && onHold)
+                onHold(mapping.kind, pressed);
+
+            continue;
+        }
 
         switch (mapping.kind)
         {
@@ -445,6 +482,13 @@ void MidiController::clearMappings()
         onMappingsChanged();
 }
 
+void MidiController::setSwitchMode(const LearnTarget& target, SwitchMode mode)
+{
+    for (size_t i = 0; i < mappings.size(); ++i)
+        if (sameTarget(mappings[i], target))
+            setSwitchMode(i, mode);
+}
+
 void MidiController::setSwitchMode(size_t index, SwitchMode mode)
 {
     if (index >= mappings.size())
@@ -533,8 +577,8 @@ juce::String MidiController::describe(const Mapping& mapping) const
 
     text << "  ->  " << describeTarget({ mapping.kind, mapping.effectType, mapping.parameterId });
 
-    if (mapping.kind == Kind::footswitch)
-        text << (mapping.switchMode == SwitchMode::latching ? "  [hold / latch]" : "  [toggle]");
+    if (supportsHold(mapping.kind))
+        text << (mapping.switchMode == SwitchMode::latching ? "  [hold]" : "  [toggle]");
 
     return text;
 }

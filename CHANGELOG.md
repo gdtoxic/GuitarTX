@@ -33,6 +33,12 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
   after the first start, a controller plugged in later); an input you turned off stays off.
   MIDI window: **Inputs ▾** turns inputs on / off directly.
 
+### Changed
+- **Hold mode** ("on while pressed, off when released") now also works for Snapshot B, Tuner, Record, Drums play
+  and LISTEN (hold to listen, release to analyze), not only for pedal On/Off. Switch the mode with **Mode** or a
+  double-click on the row in the MIDI window, or in the right-click menu of a pedal. Mode names are clearer:
+  "Toggle (press on / press off)" and "Hold (on while pressed)".
+
 ## [0.4.0] - 2026-10-25
 
 ### Added

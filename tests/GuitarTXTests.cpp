@@ -1821,6 +1821,25 @@ static void testMidiLearnActions()
         CHECK(restored != nullptr && restored->controller == mapping->controller, "note mapping saved");
     }
 
+    // Hold: снапшот B только пока держишь
+    {
+        std::vector<std::pair<K, bool>> holds;
+        midi.onHold = [&](K kind, bool down) { holds.emplace_back(kind, down); };
+        midi.setSwitchMode({ K::snapshot, {}, {} }, MidiController::SwitchMode::latching);
+
+        const auto* mapping = midi.findMapping({ K::snapshot, {}, {} });
+        const int before = fired[K::snapshot];
+        const int note = mapping->controller - MidiController::noteBase;
+
+        midi.postMessage(juce::MidiMessage::noteOn(1, note, (juce::uint8) 100));  midi.processPending();
+        midi.postMessage(juce::MidiMessage::noteOn(1, note, (juce::uint8) 100));  midi.processPending();   // дребезг: без нового события
+        midi.postMessage(juce::MidiMessage::noteOff(1, note));                    midi.processPending();
+
+        std::printf("MIDI hold: %d events (%s)\n", (int) holds.size(), midi.describe(*mapping).toRawUTF8());
+        CHECK(holds.size() == 2 && holds[0] == std::make_pair(K::snapshot, true) && holds[1] == std::make_pair(K::snapshot, false)
+              && fired[K::snapshot] == before && midi.describe(*mapping).contains("[hold]"), "hold mode for snapshot");
+    }
+
     midi.startLearn({ K::snapshot, {}, {} });
     const bool cancelled = midi.checkLearnTimeout(juce::Time::getMillisecondCounterHiRes() + MidiController::learnTimeoutMs + 10.0);
     CHECK(cancelled && timedOut && ! midi.isLearning(), "learn timeout");
