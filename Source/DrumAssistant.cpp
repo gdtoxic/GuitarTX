@@ -132,7 +132,61 @@ void DrumAssistant::finishListen()
 
     const auto data = std::move(recorded);
     recorded.clear();
-    analyzeBuffer(data, listener.getSampleRate());
+    const bool found = analyzeBuffer(data, listener.getSampleRate());
+
+    if (const auto take = saveTake(data, listener.getSampleRate(), found ? lastRiff : RiffAnalysis {}); take != juce::File())
+    {
+        lastTake = take;
+        setStatus(status + "  [take saved: " + take.getFileName() + "]");
+    }
+}
+
+juce::File DrumAssistant::defaultTakesFolder()
+{
+    return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+               .getChildFile("GuitarTX").getChildFile("Recordings").getChildFile("Listen");
+}
+
+juce::File DrumAssistant::saveTake(const std::vector<float>& mono, double sampleRate, const RiffAnalysis& riff)
+{
+    if (takesFolder == juce::File() || mono.empty() || sampleRate <= 0.0 || ! takesFolder.createDirectory())
+        return {};
+
+    const auto name = "Listen " + juce::Time::getCurrentTime().formatted("%Y-%m-%d %H-%M-%S")
+                    + (riff.valid ? " (" + juce::String(juce::roundToInt(riff.bpm)) + " BPM)" : juce::String(" (no riff)"));
+    const auto file = takesFolder.getNonexistentChildFile(name, ".wav", false);
+
+    {
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream>(file);
+
+        if (! static_cast<juce::FileOutputStream&>(*stream).openedOk())
+            return {};
+
+        auto writer = wav.createWriterFor(stream, juce::AudioFormatWriterOptions {}
+                                                      .withSampleRate(sampleRate)
+                                                      .withNumChannels(1)
+                                                      .withBitsPerSample(24));
+
+        if (writer == nullptr)
+        {
+            file.deleteFile();
+            return {};
+        }
+
+        const float* channels[] = { mono.data() };
+        writer->writeFromFloatArrays(channels, 1, (int) mono.size());
+    }
+
+    // Только последние maxTakes дублей
+    auto takes = takesFolder.findChildFiles(juce::File::findFiles, false, "Listen *.wav");
+    std::sort(takes.begin(), takes.end(), [](const juce::File& a, const juce::File& b)
+              { return a.getLastModificationTime() > b.getLastModificationTime(); });
+
+    for (int i = maxTakes; i < takes.size(); ++i)
+        takes.getReference(i).deleteFile();
+
+    return file;
 }
 
 //==============================================================================

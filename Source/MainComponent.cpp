@@ -115,6 +115,7 @@ MainComponent::MainComponent()
     setupMidi();
     setupRecorder();
     setupDrums();
+    setupLooper();
     setupSnapshots();
 
     lastSavedRack    = audioEngine.createRackState();
@@ -156,6 +157,12 @@ MainComponent::~MainComponent()
     EffectPanel::setMidiLearnHost(nullptr);
     midiWindow.reset();
     drumWindow.reset();
+    looperWindow.reset();
+
+    juce::XmlElement looperSettings("GuitarTXLooper");
+    looperSettings.setAttribute("level", (double) audioEngine.getLooper().getLevelDb());
+    looperSettings.setAttribute("drumsWithLoop", audioEngine.getLooper().getDrumsWithLoop());
+    settings.saveXml("looper", &looperSettings);
 
     panelViewport.setViewedComponent(nullptr, false);
     panel.reset();
@@ -420,6 +427,39 @@ void MainComponent::setupMidi()
             case K::nextPreset:
             case K::previousPreset:
             case K::tapTempo:
+            case K::looper:
+            case K::looperStop:
+            case K::looperUndo:
+            case K::looperClear:
+                break;
+        }
+    };
+
+    midi.onLooperSwitch = [this](bool down) { looperSwitch.switchChanged(down); };
+    midi.onLooperAction = [this](MidiController::Kind kind)
+    {
+        auto& looper = audioEngine.getLooper();
+
+        switch (kind)
+        {
+            case MidiController::Kind::looperStop:  looper.stop(); break;
+            case MidiController::Kind::looperClear: looper.clear(); showTransientStatus("Looper: cleared", 2.0); break;
+            case MidiController::Kind::looperUndo:
+                if (looper.canUndo())      looper.undo();
+                else if (looper.canRedo()) looper.redo();
+                break;
+
+            case MidiController::Kind::parameter:
+            case MidiController::Kind::footswitch:
+            case MidiController::Kind::nextPreset:
+            case MidiController::Kind::previousPreset:
+            case MidiController::Kind::tuner:
+            case MidiController::Kind::record:
+            case MidiController::Kind::snapshot:
+            case MidiController::Kind::tapTempo:
+            case MidiController::Kind::drums:
+            case MidiController::Kind::listen:
+            case MidiController::Kind::looper:
                 break;
         }
     };
@@ -543,6 +583,55 @@ void MainComponent::updateDrumButtons()
 
     if (drumsPlayButton.getButtonText() != text)
         drumsPlayButton.setButtonText(text);
+}
+
+//==============================================================================
+// Лупер
+void MainComponent::setupLooper()
+{
+    auto& looper = audioEngine.getLooper();
+
+    if (auto saved = settings.loadXml("looper"))
+    {
+        looper.setLevelDb((float) saved->getDoubleAttribute("level", 0.0));
+        looper.setDrumsWithLoop(saved->getBoolAttribute("drumsWithLoop", true));
+    }
+
+    looperSwitch.onStatus = [this](const juce::String& text) { showTransientStatus(text, 2.0); };
+
+    looperButton.setTooltip("Looper (record / overdub / undo, synced to the drums)");
+    looperButton.onClick = [this] { showLooperWindow(); };
+    addAndMakeVisible(looperButton);
+}
+
+void MainComponent::showLooperWindow()
+{
+    if (looperWindow == nullptr)
+    {
+        looperWindow = std::make_unique<LooperWindow>(audioEngine.getLooper());
+        looperWindow->centreAroundComponent(this, looperWindow->getWidth(), looperWindow->getHeight());
+    }
+
+    looperWindow->setVisible(true);
+    looperWindow->toFront(true);
+}
+
+void MainComponent::updateLooperButton()
+{
+    using S = LooperProcessor::State;
+    const auto state = audioEngine.getLooper().getState();
+
+    const auto text = juce::String("LOOP ") + (state == S::empty ? juce::String() : LooperProcessor::stateName(state));
+    const auto colour = state == S::recording   ? juce::Colour::fromRGB(210, 40, 40)
+                      : state == S::armed       ? juce::Colour::fromRGB(170, 70, 40)
+                      : state == S::playing     ? juce::Colour::fromRGB(40, 150, 70)
+                      : state == S::overdubbing ? GuitarTXLookAndFeel::accent
+                                                : getLookAndFeel().findColour(juce::TextButton::buttonColourId);
+
+    if (looperButton.getButtonText().trim() != text.trim())
+        looperButton.setButtonText(text.trim());
+
+    looperButton.setColour(juce::TextButton::buttonColourId, colour);
 }
 
 void MainComponent::saveRecorderSettings()
@@ -1094,6 +1183,7 @@ void MainComponent::timerCallback()
 
     updateMasterButton();
     updateDrumButtons();
+    updateLooperButton();
 
     if (transientTicks > 0 && --transientTicks == 0 && ! midi.isLearning())
     {
@@ -1137,6 +1227,8 @@ void MainComponent::resized()
     drumsPlayButton.setBounds(header.removeFromRight(30).reduced(0, 8));
     header.removeFromRight(2);
     drumsButton.setBounds(header.removeFromRight(76).reduced(0, 8));
+    header.removeFromRight(8);
+    looperButton.setBounds(header.removeFromRight(96).reduced(0, 8));
     header.removeFromRight(8);
     recordMenuButton.setBounds(header.removeFromRight(24).reduced(0, 8));
     header.removeFromRight(2);

@@ -967,6 +967,12 @@
     <ClCompile Include="..\..\Source\DrumAssistant.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\Source\LooperProcessor.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\LooperWindow.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Program Files\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.cpp">
       <Filter>JUCE Modules\juce_audio_basics\audio_play_head</Filter>
     </ClCompile>
@@ -4360,6 +4366,12 @@
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
     <ClInclude Include="..\..\Source\DrumAssistant.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\LooperProcessor.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\LooperWindow.h">
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
     <ClInclude Include="..\..\Source\GlobalTempo.h">

@@ -77,6 +77,11 @@ public:
         setupLearn(learnTap, MidiController::Kind::tapTempo);
         setupLearn(learnDrums, MidiController::Kind::drums);
         setupLearn(learnListen, MidiController::Kind::listen);
+        setupLearn(learnLooper, MidiController::Kind::looper);
+        setupLearn(learnLooperStop, MidiController::Kind::looperStop);
+        setupLearn(learnLooperUndo, MidiController::Kind::looperUndo);
+        setupLearn(learnLooperClear, MidiController::Kind::looperClear);
+        learnLooper.setTooltip("Looper footswitch: press - rec / play / dub, double press - stop, hold 2 s - clear");
 
         cancelButton.onClick = [this] { controller.cancelLearn(); updateState(); };
         addAndMakeVisible(cancelButton);
@@ -90,7 +95,7 @@ public:
         hint.setJustificationType(juce::Justification::topLeft);
         addAndMakeVisible(hint);
 
-        setSize(560, 538);
+        setSize(560, 572);
         updateState();
         startTimerHz(10);
     }
@@ -126,6 +131,8 @@ public:
         hint.setBounds(area.removeFromBottom(54));
         area.removeFromBottom(8);
 
+        auto learnRow4 = area.removeFromBottom(28);
+        area.removeFromBottom(6);
         auto learnRow3 = area.removeFromBottom(28);
         area.removeFromBottom(6);
         auto learnRow2 = area.removeFromBottom(28);
@@ -141,6 +148,11 @@ public:
         learnDrums.setBounds(learnRow3.removeFromLeft(w).reduced(2, 0));
         learnListen.setBounds(learnRow3.removeFromLeft(w).reduced(2, 0));
         cancelButton.setBounds(learnRow3.removeFromRight(w).reduced(2, 0));
+        const int w4 = learnRow4.getWidth() / 4;
+        learnLooper.setBounds(learnRow4.removeFromLeft(w4).reduced(2, 0));
+        learnLooperStop.setBounds(learnRow4.removeFromLeft(w4).reduced(2, 0));
+        learnLooperUndo.setBounds(learnRow4.removeFromLeft(w4).reduced(2, 0));
+        learnLooperClear.setBounds(learnRow4.reduced(2, 0));
         area.removeFromBottom(6);
 
         auto buttons = area.removeFromBottom(28);
@@ -261,7 +273,8 @@ private:
     juce::TextButton removeButton { "Remove" }, modeButton { "Mode: Toggle" }, clearButton { "Clear all" };
     juce::TextButton learnNext { "Learn: Next preset" }, learnPrevious { "Learn: Prev preset" },
                      learnTuner { "Learn: Tuner" }, learnRecord { "Learn: Record" },
-                     learnSnapshot { "Learn: Snapshot A/B" }, learnTap { "Learn: Tap tempo" }, learnDrums { "Learn: Drums play/stop" }, learnListen { "Learn: Drums LISTEN" }, cancelButton { "Cancel learn" };
+                     learnSnapshot { "Learn: Snapshot A/B" }, learnTap { "Learn: Tap tempo" }, learnDrums { "Learn: Drums play/stop" }, learnListen { "Learn: Drums LISTEN" }, learnLooper { "Learn: Looper" }, learnLooperStop { "Looper stop" },
+                     learnLooperUndo { "Looper undo" }, learnLooperClear { "Looper clear" }, cancelButton { "Cancel learn" };
 };
 
 //==============================================================================

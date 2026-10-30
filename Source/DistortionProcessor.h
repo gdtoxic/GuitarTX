@@ -3,11 +3,18 @@
 #include "EffectBase.h"
 #include "Biquad.h"
 
-// High-gain дисторшн в духе современного метал-усилителя.
+// High-gain дисторшн с моделями усилителя.
 //
-//  Tight HPF -> mid push -> [4x oversampling:
+//  Model:
+//   Modern    - современный хай-гейн (исходный звук GuitarTX)
+//   American  - 5150 / Rectifier: больше гейна, провал середины, "сэг" (компрессия оконечника)
+//   British   - JCM800: выпуклая середина, мягче второй каскад - отзывчивость на атаку
+//   Doom Fuzz - Big Muff: кремниевый клип, бесконечный сустейн, глубокий провал середины
+//   Tight     - djent: срез низа до клиппинга, яркая атака, очень плотный чаг
+//
+//  Tight HPF -> [модель: pre HPF, mid push] -> [4x oversampling:
 //      каскад 1 (асимметричный tanh) -> межкаскадный фильтр ->
-//      каскад 2 (жёсткий клиппер)] -> DC-блокер -> Bass/Mid/Treble/Presence -> Level
+//      каскад 2 (клиппер модели, сэг)] -> DC-блокер -> Bass/Mid/Treble/Presence -> [EQ модели] -> Level
 //
 //  gain     - общее усиление перед клипперами (дБ), делится между двумя каскадами
 //  tight    - срез низа ДО клиппинга (Гц): выше = плотнее и чётче чаг
@@ -17,6 +24,9 @@ class DistortionProcessor : public EffectBase
 {
 public:
     static constexpr const char* typeId = "distortion";
+
+    enum class Model { modern, american, british, doomFuzz, tight };
+    static juce::StringArray modelNames();
 
     DistortionProcessor();
 
@@ -36,8 +46,11 @@ private:
 
     static constexpr int    maxChannels      = 2;
     static constexpr int    oversamplingPow  = 2;     // 2^2 = 4x
-    static constexpr float  stageBias        = 0.25f; // асимметрия первого каскада
 
+    struct Voicing;
+    static const Voicing& voicing(Model model) noexcept;
+
+    std::atomic<float>& modelChoice;
     std::atomic<float>& gainDb;
     std::atomic<float>& tightHz;
     std::atomic<float>& bassDb;
@@ -57,8 +70,15 @@ private:
     Biquad tightFilter, midPush, dcBlocker;
     Biquad bassFilter, midFilter, trebleFilter, presenceFilter;
 
+    // Модель: свой срез до клиппинга и своя "окраска" после
+    Biquad voicePreHighPass, voiceLow, voiceMid, voiceHigh;
+
     // Частота oversampling (между каскадами)
     Biquad interStageHighPass, interStageLowPass;
+
+    Model currentModel = Model::modern;
+    std::array<float, maxChannels> sagEnvelope {};
+    float sagAttack = 0.0f, sagRelease = 0.0f;
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> stage1Gain, stage2Gain;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear>         outputLevel;

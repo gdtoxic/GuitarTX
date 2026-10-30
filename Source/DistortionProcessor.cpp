@@ -2,12 +2,8 @@
 
 namespace
 {
-    // Фиксированные точки "характера" усилителя
-    constexpr float midPushHz      = 900.0f;   // горб середины перед клиппингом
-    constexpr float midPushDb      = 6.0f;
     constexpr float dcBlockHz      = 20.0f;
     constexpr float interStageHpHz = 40.0f;    // не даём низу размыть второй каскад
-    constexpr float interStageLpHz = 7000.0f;  // режем "песок" между каскадами
 
     constexpr float bassHz     = 110.0f;
     constexpr float midHz      = 650.0f;
@@ -15,20 +11,65 @@ namespace
     constexpr float trebleHz   = 2800.0f;
     constexpr float presenceHz = 5500.0f;
 
-    // Доля общего gain (в дБ), которая идёт на первый каскад
-    constexpr float stage1Share = 0.6f;
-
     // Второй каскад: гладкий, но быстро упирающийся клиппер
     inline float hardishClip(float x) noexcept
     {
         const float clipped = juce::jlimit(-1.5f, 1.5f, x);
         return clipped - (clipped * clipped * clipped) * (4.0f / 27.0f);
     }
+
+    // Кремниевые диоды фузза: почти "квадрат" на большом сигнале
+    inline float fuzzClip(float x) noexcept
+    {
+        return std::tanh(2.5f * x) * 0.8f;
+    }
+}
+
+// Характер модели: фильтры до / после клиппинга, распределение гейна, клиппер, сэг
+struct DistortionProcessor::Voicing
+{
+    float preHighPassHz;               // срез низа до клиппинга (в дополнение к Tight)
+    float midPushHz, midPushDb, midPushQ;
+    float stage1Share;                 // доля гейна (дБ) на первый каскад
+    float bias;                        // асимметрия первого каскада (чётные гармоники)
+    float interStageLowPassHz;         // "песок" между каскадами
+    int   clipper;                     // 0 - жёсткий, 1 - мягкий tanh, 2 - фузз
+    float sag;                         // 0..1: просадка гейна второго каскада от громкости
+    float gainOffsetDb;
+    float lowShelfHz, lowShelfDb, midHz, midDb, midQ, highShelfHz, highShelfDb;
+    float levelTrimDb;                 // выравнивание громкости между моделями
+};
+
+const DistortionProcessor::Voicing& DistortionProcessor::voicing(Model model) noexcept
+{
+    //                                     preHP  push Hz  dB   Q    share bias  interLP clip sag  gain  low Hz dB   mid Hz dB   Q    high Hz dB   trim
+    static const Voicing modern     {       0.0f,  900.0f, 6.0f, 0.7f, 0.60f, 0.25f, 7000.0f, 0, 0.0f, 0.0f, 100.0f, 0.0f, 600.0f, 0.0f, 0.7f, 4000.0f, 0.0f,  0.0f };
+    static const Voicing american   {      30.0f,  750.0f, 4.0f, 0.7f, 0.55f, 0.15f, 6000.0f, 0, 0.35f, 4.0f, 100.0f, 2.0f, 500.0f, -4.0f, 0.9f, 4000.0f, 2.0f, -0.8f };
+    static const Voicing british    {      90.0f, 1000.0f, 8.0f, 0.8f, 0.70f, 0.35f, 5000.0f, 1, 0.15f, -2.0f, 120.0f, -1.0f, 800.0f, 2.0f, 0.8f, 3500.0f, 1.0f,  2.0f };
+    static const Voicing doomFuzz   {      25.0f,  900.0f, 0.0f, 0.7f, 0.50f, 0.05f, 3500.0f, 2, 0.0f, 0.0f, 120.0f, 3.0f, 900.0f, -8.0f, 0.6f, 4000.0f, 0.0f, -1.3f };
+    static const Voicing tight      {     120.0f, 1400.0f, 5.0f, 1.0f, 0.60f, 0.20f, 8500.0f, 0, 0.0f, 2.0f,  90.0f, -2.0f, 600.0f, 0.0f, 0.7f, 5000.0f, 2.0f,  0.4f };
+
+    switch (model)
+    {
+        case Model::modern:   return modern;
+        case Model::american: return american;
+        case Model::british:  return british;
+        case Model::doomFuzz: return doomFuzz;
+        case Model::tight:    return tight;
+    }
+
+    return modern;
+}
+
+juce::StringArray DistortionProcessor::modelNames()
+{
+    return { "Modern", "American", "British", "Doom Fuzz", "Tight" };
 }
 
 //==============================================================================
 DistortionProcessor::DistortionProcessor()
     : EffectBase(createLayout()),
+      modelChoice(getParameterValue("model")),
       gainDb    (getParameterValue("gain")),
       tightHz   (getParameterValue("tight")),
       bassDb    (getParameterValue("bass")),
@@ -43,6 +84,8 @@ EffectBase::Layout DistortionProcessor::createLayout()
 {
     Layout layout;
 
+    // Модель - первая: в старых пресетах её нет, значит Modern (исходный звук)
+    layout.add(makeChoiceParameter("model",   "Model", modelNames(), 0));
     layout.add(makeFloatParameter("gain",     "Gain",       0.0f,  60.0f, 0.1f,  38.0f, "dB", 1));
     layout.add(makeFloatParameter("tight",    "Tight",     20.0f, 400.0f, 1.0f, 130.0f, "Hz", 0, 120.0f));
     layout.add(makeFloatParameter("bass",     "Bass",     -12.0f,  12.0f, 0.1f,   3.0f, "dB", 1));
@@ -68,11 +111,12 @@ void DistortionProcessor::prepareEffect(double newSampleRate, int newMaxBlockSiz
     stage2Gain.reset(osRate, 0.03);
     outputLevel.reset(sampleRate, 0.02);
 
-    // Фиксированные фильтры
-    midPush.setPeak(sampleRate, midPushHz, 0.7f, midPushDb);
     dcBlocker.setHighPass(sampleRate, dcBlockHz);
     interStageHighPass.setHighPass(osRate, interStageHpHz);
-    interStageLowPass.setLowPass(osRate, interStageLpHz);
+
+    // Сэг: атака 5 мс, восстановление 80 мс (на частоте oversampling)
+    sagAttack  = (float) std::exp(-1.0 / (0.005 * osRate));
+    sagRelease = (float) std::exp(-1.0 / (0.08 * osRate));
 
     setLatencySamples(juce::roundToInt(oversampling.getLatencyInSamples()));
 
@@ -86,18 +130,40 @@ void DistortionProcessor::resetEffect()
 
     for (auto* filter : { &tightFilter, &midPush, &dcBlocker,
                           &bassFilter, &midFilter, &trebleFilter, &presenceFilter,
-                          &interStageHighPass, &interStageLowPass })
+                          &interStageHighPass, &interStageLowPass,
+                          &voicePreHighPass, &voiceLow, &voiceMid, &voiceHigh })
         filter->reset();
 
-    const float totalDb = gainDb.load();
+    sagEnvelope.fill(0.0f);
 
-    stage1Gain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(totalDb * stage1Share));
-    stage2Gain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(totalDb * (1.0f - stage1Share)));
-    outputLevel.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(levelDb.load()));
+    const auto& v = voicing(currentModel);
+    const float totalDb = gainDb.load() + v.gainOffsetDb;
+
+    stage1Gain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(totalDb * v.stage1Share));
+    stage2Gain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(totalDb * (1.0f - v.stage1Share)));
+    outputLevel.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(levelDb.load() + v.levelTrimDb));
 }
 
 void DistortionProcessor::updateFilters(bool force)
 {
+    const auto model = (Model) juce::jlimit(0, 4, juce::roundToInt(modelChoice.load()));
+
+    if (force || model != currentModel)
+    {
+        currentModel = model;
+        const auto& v = voicing(model);
+        const double osRate = sampleRate * (double) oversampling.getOversamplingFactor();
+
+        if (v.preHighPassHz > 0.0f)
+            voicePreHighPass.setHighPass(sampleRate, v.preHighPassHz);
+
+        midPush.setPeak(sampleRate, v.midPushHz, v.midPushQ, v.midPushDb);
+        interStageLowPass.setLowPass(osRate, v.interStageLowPassHz);
+        voiceLow.setLowShelf(sampleRate, v.lowShelfHz, v.lowShelfDb);
+        voiceMid.setPeak(sampleRate, v.midHz, v.midQ, v.midDb);
+        voiceHigh.setHighShelf(sampleRate, v.highShelfHz, v.highShelfDb);
+    }
+
     const float tight    = tightHz.load();
     const float bass     = bassDb.load();
     const float mid      = midDb.load();
@@ -147,10 +213,11 @@ void DistortionProcessor::processEffect(juce::AudioBuffer<float>& buffer)
     // Параметры берём один раз на блок
     updateFilters(false);
 
-    const float totalDb = gainDb.load();
-    stage1Gain.setTargetValue(juce::Decibels::decibelsToGain(totalDb * stage1Share));
-    stage2Gain.setTargetValue(juce::Decibels::decibelsToGain(totalDb * (1.0f - stage1Share)));
-    outputLevel.setTargetValue(juce::Decibels::decibelsToGain(levelDb.load()));
+    const auto& v = voicing(currentModel);
+    const float totalDb = gainDb.load() + v.gainOffsetDb;
+    stage1Gain.setTargetValue(juce::Decibels::decibelsToGain(totalDb * v.stage1Share));
+    stage2Gain.setTargetValue(juce::Decibels::decibelsToGain(totalDb * (1.0f - v.stage1Share)));
+    outputLevel.setTargetValue(juce::Decibels::decibelsToGain(levelDb.load() + v.levelTrimDb));
 
     juce::dsp::AudioBlock<float> fullBlock(buffer);
 
@@ -172,6 +239,7 @@ void DistortionProcessor::processChunk(juce::dsp::AudioBlock<float>& block)
 {
     const int numChannels = (int) block.getNumChannels();
     const int numSamples  = (int) block.getNumSamples();
+    const bool voiced     = currentModel != Model::modern;
 
     // 1. До клиппинга: срезаем низ (tight) и выталкиваем середину
     for (int ch = 0; ch < numChannels; ++ch)
@@ -179,7 +247,14 @@ void DistortionProcessor::processChunk(juce::dsp::AudioBlock<float>& block)
         float* data = block.getChannelPointer((size_t) ch);
 
         for (int i = 0; i < numSamples; ++i)
-            data[i] = midPush.processSample(ch, tightFilter.processSample(ch, data[i]));
+        {
+            float x = tightFilter.processSample(ch, data[i]);
+
+            if (voiced)
+                x = voicePreHighPass.processSample(ch, x);
+
+            data[i] = midPush.processSample(ch, x);
+        }
     }
 
     // 2. Два каскада клиппинга на 4x частоте
@@ -193,7 +268,9 @@ void DistortionProcessor::processChunk(juce::dsp::AudioBlock<float>& block)
     for (int ch = 0; ch < osChannels; ++ch)
         ptrs[ch] = oversampled.getChannelPointer((size_t) ch);
 
-    const float biasOffset = std::tanh(stageBias);
+    const auto& v = voicing(currentModel);
+    const float bias = v.bias;
+    const float biasOffset = std::tanh(bias);
 
     for (int i = 0; i < osSamples; ++i)
     {
@@ -203,13 +280,25 @@ void DistortionProcessor::processChunk(juce::dsp::AudioBlock<float>& block)
         for (int ch = 0; ch < osChannels; ++ch)
         {
             // Каскад 1: асимметрия даёт чётные гармоники ("ламповость")
-            float x = std::tanh(ptrs[ch][i] * g1 + stageBias) - biasOffset;
+            float x = std::tanh(ptrs[ch][i] * g1 + bias) - biasOffset;
 
             x = interStageHighPass.processSample(ch, x);
             x = interStageLowPass.processSample(ch, x);
 
-            // Каскад 2: плотная компрессия и "пила"
-            ptrs[ch][i] = hardishClip(x * g2);
+            // Сэг: громкая игра немного "проседает" - гейн второго каскада следует за огибающей
+            float gain2 = g2;
+
+            if (v.sag > 0.0f)
+            {
+                const float a = std::abs(x);
+                auto& env = sagEnvelope[(size_t) ch];
+                env = a > env ? a + sagAttack * (env - a) : a + sagRelease * (env - a);
+                gain2 *= 1.0f - v.sag * juce::jmin(1.0f, env);
+            }
+
+            // Каскад 2: клиппер модели
+            const float y = x * gain2;
+            ptrs[ch][i] = v.clipper == 2 ? fuzzClip(y) : v.clipper == 1 ? std::tanh(y) : hardishClip(y);
         }
     }
 
@@ -230,6 +319,10 @@ void DistortionProcessor::processChunk(juce::dsp::AudioBlock<float>& block)
             x = midFilter.processSample(ch, x);
             x = trebleFilter.processSample(ch, x);
             x = presenceFilter.processSample(ch, x);
+
+            // Modern - исходный звук без "окраски" модели (совместимость старых пресетов)
+            if (voiced)
+                x = voiceHigh.processSample(ch, voiceMid.processSample(ch, voiceLow.processSample(ch, x)));
 
             ptrs[ch][i] = x * level;
         }

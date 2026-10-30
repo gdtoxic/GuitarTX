@@ -16,6 +16,7 @@
 #include "DrumLibrary.h"
 #include "DrumWindow.h"
 #include "DrumAssistant.h"
+#include "LooperWindow.h"
 
 //==============================================================================
 class MainComponent : public juce::Component,
@@ -71,6 +72,11 @@ private:
     void toggleDrums();
     void updateDrumButtons();
 
+    // Лупер
+    void setupLooper();
+    void showLooperWindow();
+    void updateLooperButton();
+
     // Snapshots A/B
     void setupSnapshots();
     void selectSnapshot(int index);
@@ -103,6 +109,7 @@ private:
     juce::TextButton recordMenuButton;
     juce::TextButton drumsButton { "DRUMS" };
     juce::TextButton drumsPlayButton;
+    juce::TextButton looperButton { "LOOP" };
     std::unique_ptr<juce::FileChooser> reampChooser;
 
     // Кнопка с отдельной реакцией на правый клик (меню вместо нажатия)
@@ -152,6 +159,8 @@ private:
     DrumLibrary drumLibrary;
     DrumAssistant drumAssistant { audioEngine.getDrums(), audioEngine.getListener() };
     std::unique_ptr<DrumWindow> drumWindow;
+    LooperSwitch looperSwitch { audioEngine.getLooper() };
+    std::unique_ptr<LooperWindow> looperWindow;
 
     // MIDI: удаляется первым (колбэки ссылаются на UI выше)
     MidiController midi { audioEngine };

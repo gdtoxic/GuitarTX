@@ -28,6 +28,7 @@
 #include "DrumGenerator.h"
 #include "DrumAssistant.h"
 #include "ListenProcessor.h"
+#include "LooperProcessor.h"
 #include "GlobalTempo.h"
 #include <cstdio>
 #include <cstdlib>
@@ -1511,6 +1512,259 @@ static void testRiffAnalysis()
     }
 }
 
+//==============================================================================
+// Реалистичная "живая" гитара (Karplus-Strong) для проверки LISTEN.
+//  X - аккорд-квинта с акцентом, x - палм-мьют, C - открытый аккорд (звенит),
+//  h / p - хаммер-он / пулл-офф (без медиатора), s - слайд (без медиатора, не обязан ловиться),
+//  '-' - тянуть, '.' - заглушить, r - пауза, но струны звенят дальше.
+class KarplusString
+{
+public:
+    explicit KarplusString(double rate) : sr(rate), line((size_t) (rate / 30.0) + 4, 0.0f) {}
+
+    void pluck(double frequency, float amplitude, float brightness, juce::Random& random)
+    {
+        period = targetPeriod = sr / frequency;
+        glide = 1.0;
+        float lp = 0.0f;
+
+        // Медиатор заново возбуждает струну: прежнее колебание почти гасится
+        for (auto& v : line)
+            v *= 0.1f;
+
+        // Возбуждение: шум с фильтром (медиатор ярче, палм-мьют темнее)
+        for (int i = 0; i < (int) period; ++i)
+        {
+            lp += brightness * ((random.nextFloat() * 2.0f - 1.0f) - lp);
+            line[(write + line.size() - (size_t) i - 1) % line.size()] += amplitude * lp * 2.0f;
+        }
+    }
+
+    void legato(double frequency, float amplitude, bool slide)
+    {
+        targetPeriod = sr / frequency;
+        glide = slide ? 1.0 - std::exp(-1.0 / (0.04 * sr)) : 1.0;
+
+        if (! slide)
+            period = targetPeriod;
+
+        // Удар пальца: небольшая "встряска" струны без шума медиатора
+        for (int i = 0; i < (int) targetPeriod / 2; ++i)
+            line[(write + line.size() - (size_t) i - 1) % line.size()] *= 1.0f + amplitude;
+    }
+
+    // Затухание за один период (один проход по линии задержки)
+    void setDamping(float value) noexcept { damping = value; }
+
+    float next()
+    {
+        period += (targetPeriod - period) * glide;
+        const double readPos = (double) write - period;
+        const double wrapped = readPos < 0.0 ? readPos + (double) line.size() : readPos;
+        const auto i0 = (size_t) wrapped;
+        const float frac = (float) (wrapped - (double) i0);
+        const float a = line[i0 % line.size()], b = line[(i0 + 1) % line.size()], c = line[(i0 + 2) % line.size()];
+        const float delayed = a + frac * (b - a);
+        const float next = delayed + frac * (c - b);
+        const float y = damping * 0.5f * (delayed + next);
+        line[write] = y;
+        write = (write + 1) % line.size();
+        return y;
+    }
+
+private:
+    double sr, period = 100.0, targetPeriod = 100.0, glide = 1.0;
+    std::vector<float> line;
+    size_t write = 0;
+    float damping = 0.99f;
+};
+
+struct LiveRiff
+{
+    std::vector<float> audio;
+    juce::String expected;   // x - атака должна найтись, . - не должна, ? - всё равно
+};
+
+static LiveRiff synthLiveRiff(double bpm, int stepsPerBeat, const char* pattern, int repeats, double driftMs,
+                              float noiseLevel, juce::int64 seed)
+{
+    const double sr = 48000.0;
+    const juce::String text(pattern);
+    const double step = 60.0 / bpm / stepsPerBeat;
+    const int total = text.length() * repeats;
+    juce::Random random(seed);
+
+    LiveRiff riff;
+    riff.audio.assign((size_t) ((total * step + 1.5) * sr), 0.0f);
+
+    for (int i = 0; i < text.length(); ++i)
+    {
+        const auto c = text[i];
+        riff.expected << (juce::String("XxCHhp").containsChar(c) ? 'x' : c == 's' ? '?' : '.');
+    }
+
+    // Человеческий тайминг: медленный "плавающий" сдвиг + случайный разброс, в сумме до +-driftMs
+    std::vector<double> times((size_t) total + 1);
+    for (int i = 0; i <= total; ++i)
+        times[(size_t) i] = i * step + 0.001 * driftMs * (0.6 * std::sin(i * 0.37 + 1.0) + 0.4 * (random.nextDouble() * 2.0 - 1.0));
+
+    std::vector<KarplusString> strings(4, KarplusString(sr));
+    const double low = 82.41;   // E2
+    const double chord[] = { 1.0, 1.4983, 2.0, 2.5198 };
+    int semis = 0;
+
+    for (int i = 0; i < total; ++i)
+    {
+        const auto c = text[i % text.length()];
+        const int from = juce::jmax(0, (int) (times[(size_t) i] * sr));
+        const int to = juce::jmin((int) riff.audio.size(), (int) (times[(size_t) i + 1] * sr));
+
+        if (c == 'X' || c == 'x' || c == 'C')
+        {
+            semis = c == 'C' ? 5 : (random.nextInt(3) == 0 ? 3 : 0);
+            const int voices = c == 'x' ? 1 : c == 'X' ? 3 : 4;
+
+            // Не задействованные струны глушатся рукой
+            for (int v = voices; v < 4; ++v)
+                strings[(size_t) v].setDamping(0.6f);
+
+            for (int v = 0; v < voices; ++v)
+            {
+                const double f = low * std::exp2(semis / 12.0) * chord[v];
+                strings[(size_t) v].pluck(f, c == 'x' ? 0.8f : 0.6f, c == 'x' ? 0.3f : 0.7f, random);
+                strings[(size_t) v].setDamping(c == 'x' ? 0.93f : 0.997f);
+            }
+        }
+        else if (c == 'h' || c == 'p' || c == 's')
+        {
+            semis += c == 'p' ? -2 : 2;
+            strings[0].legato(low * std::exp2(semis / 12.0), c == 's' ? 0.0f : 0.4f, c == 's');
+        }
+        else if (c == '.')
+        {
+            for (auto& string : strings)
+                string.setDamping(0.7f);
+        }
+
+        // Щелчок медиатора: 2-3 мс широкополосного шума (у хаммер-она / слайда его нет)
+        const bool picked = c == 'X' || c == 'x' || c == 'C';
+        const float click = picked ? 0.2f : 0.0f;
+
+        for (int n = from; n < to; ++n)
+        {
+            float sum = 0.0f;
+            for (auto& string : strings) sum += string.next();
+
+            const int k = n - from;
+            if (click > 0.0f && k < 120)
+                sum += click * (random.nextFloat() * 2.0f - 1.0f) * (1.0f - (float) k / 120.0f);
+
+            riff.audio[(size_t) n] += sum;
+        }
+    }
+
+    // Шум, фон сети 50 Гц + гармоника, остаток звенящих струн в конце
+    for (size_t n = 0; n < riff.audio.size(); ++n)
+    {
+        const double t = (double) n / sr;
+        riff.audio[n] += noiseLevel * (random.nextFloat() * 2.0f - 1.0f)
+                       + noiseLevel * 2.0f * (float) (std::sin(2.0 * juce::MathConstants<double>::pi * 50.0 * t)
+                                                     + 0.5 * std::sin(2.0 * juce::MathConstants<double>::pi * 150.0 * t));
+    }
+
+    return riff;
+}
+
+static int riffMismatches(const RiffAnalysis& a, const juce::String& expected)
+{
+    int errors = 0;
+
+    for (int s = 0; s < a.length; ++s)
+    {
+        const auto e = expected[s % expected.length()];
+        if (e != '?' && (e == 'x') != (a.strength[(size_t) s] > 0.0f))
+            ++errors;
+    }
+
+    return errors;
+}
+
+static void testListenLiveGuitar()
+{
+    const double sr = 48000.0;
+
+    struct Case
+    {
+        const char* name;
+        double bpm;
+        int spb;
+        const char* riff;
+        double driftMs;
+        float noise;
+        std::optional<double> hint;
+    };
+
+    const Case cases[] = {
+        { "djent chugs + chords",    140.0, 4, "X.xxX.xhx.xxC--.",   8.0, 0.002f, std::nullopt },
+        { "gallop thrash",           180.0, 4, "XxxXxxXxxXxxC---",  10.0, 0.002f, std::nullopt },
+        { "doom ringing chords",      70.0, 4, "C-------X---x.xr",  15.0, 0.003f, 80.0 },
+        { "hammer-ons / pull-offs",  120.0, 4, "Xhp.XhpsX.x.xhx.",  12.0, 0.002f, std::nullopt },
+        { "triplets + palm mutes",   100.0, 3, "X.xX.xxhxC--",      10.0, 0.002f, std::nullopt },
+        { "sloppy + hum",            125.0, 4, "X.x.xxX.x.xxC-r.",  15.0, 0.008f, std::nullopt },
+    };
+
+    int seed = 100;
+
+    for (const auto& c : cases)
+    {
+        const auto live = synthLiveRiff(c.bpm, c.spb, c.riff, 2, c.driftMs, c.noise, ++seed);
+        const auto a = RiffAnalyzer::analyze(live.audio.data(), (int) live.audio.size(), sr, c.hint);
+        const int errors = a.valid ? riffMismatches(a, live.expected) : 99;
+        const bool gridOk = a.grid == (c.spb == 3 ? DrumPattern::Grid::eighthTriplet : DrumPattern::Grid::sixteenth);
+
+        std::printf("Live %-24s %5.1f BPM: %s | %s (expected %s) errors %d\n", c.name, c.bpm,
+                    a.message.toRawUTF8(), stepsText(a).toRawUTF8(), live.expected.toRawUTF8(), errors);
+        CHECK(a.valid && std::abs(a.bpm - c.bpm) < 1.5 && gridOk && errors <= 1,
+              "live riff '%s': bpm %.1f, %d step errors", c.name, a.bpm, errors);
+    }
+
+    // Дубли LISTEN: сохраняются в WAV с темпом в имени, хранятся только последние maxTakes
+    {
+        const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("GuitarTXTakesTest");
+        folder.deleteRecursively();
+
+        DrumMachine drums;
+        ListenProcessor listener;
+        DrumAssistant assistant(drums, listener);
+        assistant.setTakesFolder(folder);
+
+        const auto live = synthLiveRiff(140.0, 4, "X.xxX.xhx.xxC--.", 1, 5.0, 0.002f, 7);
+        const auto riff = RiffAnalyzer::analyze(live.audio.data(), (int) live.audio.size(), sr);
+        const auto take = assistant.saveTake(live.audio, sr, riff);
+
+        std::vector<float> back;
+        double backRate = 0.0;
+        juce::String error;
+        const bool read = RiffAnalyzer::readFile(take, back, backRate, error);
+        CHECK(take.existsAsFile() && take.getFileName().contains("(" + juce::String(juce::roundToInt(riff.bpm)) + " BPM)") && read && backRate == sr
+              && back.size() == live.audio.size(), "LISTEN take saved: %s", take.getFileName().toRawUTF8());
+
+        const auto again = read ? RiffAnalyzer::analyze(back.data(), (int) back.size(), backRate) : RiffAnalysis {};
+        CHECK(again.valid && std::abs(again.bpm - riff.bpm) < 0.5, "LISTEN take re-analyzes the same");
+
+        for (int i = 0; i < DrumAssistant::maxTakes + 3; ++i)
+            assistant.saveTake(std::vector<float>(4800, 0.1f), sr, RiffAnalysis {});
+
+        const int kept = folder.getNumberOfChildFiles(juce::File::findFiles, "Listen *.wav");
+        CHECK(kept == DrumAssistant::maxTakes, "LISTEN takes kept: %d", kept);
+        CHECK(folder.findChildFiles(juce::File::findFiles, false, "*(no riff)*.wav").size() > 0, "failed take named 'no riff'");
+
+        assistant.setTakesFolder({});
+        CHECK(assistant.saveTake(live.audio, sr, riff) == juce::File(), "takes can be switched off");
+        folder.deleteRecursively();
+    }
+}
+
 static void testDrumGenerator()
 {
     using T = DrumPattern::Track;
@@ -1654,6 +1908,7 @@ static void testDrumFillsAndFollow()
         DrumMachine drums;
         drums.setOnsetSource(&listener);
         drums.setLevelDb(0.0f);
+        drums.setFillEvery(0);
 
         for (auto* p : { (juce::AudioProcessor*) &listener, (juce::AudioProcessor*) &drums })
         {
@@ -1846,6 +2101,243 @@ static void testMidiLearnActions()
     std::printf("MIDI learn: %d actions learned and triggered, timeout OK\n", (int) kinds.size());
 }
 
+// Граф лупера для тестов: Listen (часы) -> Looper -> Drums
+struct LooperRig
+{
+    static constexpr double sr = 48000.0;
+    static constexpr int block = 240;   // 48000 и 96000 делятся нацело
+
+    ListenProcessor listener;
+    LooperProcessor looper;
+    DrumMachine drums;
+
+    LooperRig()
+    {
+        looper.setClockSource(&listener);
+        looper.setDrums(&drums);
+        drums.setOnsetSource(&listener);
+        drums.setLevelDb(0.0f);
+        drums.setFillEvery(0);
+
+        for (auto* p : { (juce::AudioProcessor*) &listener, (juce::AudioProcessor*) &looper, (juce::AudioProcessor*) &drums })
+        {
+            p->setPlayConfigDetails(2, 2, sr, block);
+            p->prepareToPlay(sr, block);
+        }
+    }
+
+    // beforeBlock(start): команды; возвращает выход (левый канал)
+    std::vector<float> run(const std::vector<float>& input, const std::function<void(int)>& beforeBlock = {})
+    {
+        std::vector<float> out(input.size(), 0.0f);
+        juce::AudioBuffer<float> buf(2, block);
+        juce::MidiBuffer midi;
+
+        for (size_t start = 0; start + block <= input.size(); start += block)
+        {
+            if (beforeBlock) beforeBlock((int) start);
+
+            for (int k = 0; k < block; ++k)
+            {
+                buf.setSample(0, k, input[start + (size_t) k]);
+                buf.setSample(1, k, input[start + (size_t) k]);
+            }
+
+            listener.processBlock(buf, midi);
+            looper.processBlock(buf, midi);
+            drums.processBlock(buf, midi);
+
+            for (int k = 0; k < block; ++k)
+                out[start + (size_t) k] = buf.getSample(0, k);
+        }
+
+        return out;
+    }
+};
+
+static std::vector<int> peaksAbove(const std::vector<float>& x, float threshold, int from = 0)
+{
+    std::vector<int> result;
+    for (size_t i = (size_t) from; i < x.size(); ++i)
+        if (std::abs(x[i]) > threshold && (result.empty() || (int) i - result.back() > 100))
+            result.push_back((int) i);
+    return result;
+}
+
+static void testLooper()
+{
+    using T = DrumPattern::Track;
+    auto& tempo = GlobalTempo::get();
+    const double sr = LooperRig::sr;
+
+    // 1. Свободный луп 2 с: повтор ровно через длину, темп 120 по длине, барабаны вступают с началом лупа
+    {
+        tempo.setBpm(90.0);
+        LooperRig rig;
+        rig.drums.setPattern(DrumPattern::fromRows("Q", DrumPattern::Grid::sixteenth, 0.0f, { { T::kick, "x..............." } }), true);
+        for (int t = 1; t < DrumPattern::numTracks; ++t) rig.drums.getTrack(t).mute.store(true);
+        rig.drums.setLevelDb(-60.0f);   // барабаны почти не слышны: проверяем лупер
+
+        std::vector<float> in((size_t) (sr * 7.0), 0.0f);
+        in[1000] = 0.5f;
+
+        bool drumsStarted = false;
+        int drumsStartBlock = -1;
+        const auto out = rig.run(in, [&](int start)
+        {
+            if (start == 0)     rig.looper.pressMain();
+            if (start == 96000) rig.looper.pressMain();
+            if (! drumsStarted && rig.drums.isRunningNow()) { drumsStarted = true; drumsStartBlock = start; }
+        });
+
+        const auto hits = peaksAbove(out, 0.3f);
+        std::printf("Looper free: hits %s, tempo %.1f, bars %d, drums started at block %d\n", joinInts(hits).toRawUTF8(),
+                    tempo.getBpm(), rig.looper.getBars(), drumsStartBlock);
+        CHECK(hits.size() >= 3 && hits[0] == 1000 && hits[1] == 97000 && hits[2] == 193000
+              && std::abs(tempo.getBpm() - 120.0) < 0.01 && rig.looper.getBars() == 1
+              && drumsStarted && drumsStartBlock == 96000 + LooperRig::block, "free loop / tempo / drums with loop");
+        tempo.setBpm(120.0);
+    }
+
+    // 2. Наложение, Undo / Redo, второй слой; x2
+    {
+        LooperRig rig;
+        rig.looper.setDrumsWithLoop(false);
+        std::vector<float> in((size_t) (sr * 16.0), 0.0f);
+        in[1000] = 0.4f;           // основа: позиция 1000
+        in[96000 + 30000] = 0.4f;  // слой 1: позиция 30000 (наложение 2.5..3 с)
+        in[96000 * 3 + 60000] = 0.4f; // слой 2: позиция 60000
+
+        std::map<int, std::vector<int>> passes;   // проход лупа -> позиции ударов
+        const auto out = rig.run(in, [&](int start)
+        {
+            switch (start)
+            {
+                case 0:            rig.looper.pressMain(); break;   // запись
+                case 96000:        rig.looper.pressMain(); break;   // игра
+                case 96000 + 24000:rig.looper.pressMain(); break;   // наложение 1
+                case 96000 + 48000:rig.looper.pressMain(); break;   // игра
+                case 96000 * 2 + 10:break;
+                case 96000 * 3:    rig.looper.undo(); break;        // проход 3 - без слоя 1
+                case 96000 * 3 + 48000: rig.looper.redo(); rig.looper.pressMain(); break;   // вернуть, наложение 2
+                case 96000 * 3 + 72000: rig.looper.pressMain(); break;
+                case 96000 * 5:    rig.looper.doubleLength(); break;
+                default: break;
+            }
+        });
+
+        auto positionsIn = [&](int from, int to)
+        {
+            std::vector<int> result;
+            for (int h : peaksAbove(out, 0.2f, from))
+                if (h < to) result.push_back(h - from);
+            return result;
+        };
+
+        const auto pass2 = positionsIn(96000 * 2, 96000 * 3);   // основа + слой 1
+        const auto pass3 = positionsIn(96000 * 3, 96000 * 3 + 40000);   // undo: только основа
+        const auto pass5 = positionsIn(96000 * 4, 96000 * 5);   // основа + слой 1 + слой 2
+        const auto doubled = positionsIn(96000 * 6, 96000 * 8); // после x2 (длина 4 с): каждый удар дважды
+
+        std::printf("Looper layers: pass2 %s | undo %s | pass5 %s | x2 %s, length %.1f s\n", joinInts(pass2).toRawUTF8(),
+                    joinInts(pass3).toRawUTF8(), joinInts(pass5).toRawUTF8(), joinInts(doubled).toRawUTF8(), rig.looper.getLengthSeconds());
+
+        CHECK(pass2 == std::vector<int>({ 1000, 30000 }) && pass3 == std::vector<int>({ 1000 })
+              && pass5 == std::vector<int>({ 1000, 30000, 60000 }), "overdub / undo / redo");
+        CHECK(std::abs(rig.looper.getLengthSeconds() - 4.0) < 0.001
+              && doubled == std::vector<int>({ 1000, 30000, 60000, 97000, 126000, 156000 }), "double length");
+    }
+
+    // 3. Синхронно с барабанами (120 BPM, такт 96000): запись "с доли" задним числом, конец - на доле
+    {
+        tempo.setBpm(120.0);
+        LooperRig rig;
+        rig.drums.setPattern(DrumPattern::fromRows("Silent", DrumPattern::Grid::sixteenth, 0.0f, { { T::kick, "................" } }), true);
+        rig.drums.setPlaying(true);
+
+        std::vector<float> in((size_t) (sr * 9.0), 0.0f);
+        in[97000] = 0.5f;    // до нажатия - попадёт из буфера
+        in[150000] = 0.5f;
+
+        const auto out = rig.run(in, [&](int start)
+        {
+            if (start == 100080) rig.looper.pressMain();          // 4 % такта после доли 96000
+            if (start == 192000 + 5040) rig.looper.pressMain();   // сразу после доли 192000 - луп 1 такт
+        });
+
+        const auto hits = peaksAbove(out, 0.3f, 192000 + 6000);
+        std::printf("Looper sync: loop %.3f s, bars %d, hits %s\n", rig.looper.getLengthSeconds(), rig.looper.getBars(),
+                    joinInts(hits).toRawUTF8());
+        CHECK(std::abs(rig.looper.getLengthSeconds() - 2.0) < 0.001 && rig.looper.getBars() == 1
+              && hits.size() >= 4 && hits[0] == 246000 && hits[1] == 289000 && hits[2] == 342000 && hits[3] == 385000,
+              "sync record from the downbeat / close on the bar");
+
+        // Ожидание доли: нажатие в середине такта - запись с начала следующего
+        LooperRig rig2;
+        rig2.drums.setPattern(DrumPattern::fromRows("Silent", DrumPattern::Grid::sixteenth, 0.0f, { { T::kick, "................" } }), true);
+        rig2.drums.setPlaying(true);
+        bool waited = false;
+        rig2.run(std::vector<float>((size_t) (sr * 5.0), 0.0f), [&](int start)
+        {
+            if (start == 150000) rig2.looper.pressMain();
+            if (start == 180000) waited = rig2.looper.isWaitingForBar() && rig2.looper.getState() == LooperProcessor::State::armed;
+            if (start == 200160) waited = waited && rig2.looper.getState() == LooperProcessor::State::recording;
+        });
+        CHECK(waited, "armed until the next bar");
+    }
+
+    // 4. Шов лупа без щелчка: непрерывный синус, длина - не целое число периодов
+    {
+        LooperRig rig;
+        rig.looper.setDrumsWithLoop(false);
+        const int length = 96000;
+        std::vector<float> in((size_t) (sr * 6.0), 0.0f);
+        for (int i = 0; i < length + 2000; ++i)
+            in[(size_t) i] = 0.3f * (float) std::sin(2.0 * juce::MathConstants<double>::pi * 97.3 * i / sr);
+
+        const auto out = rig.run(in, [&](int start)
+        {
+            if (start == 0) rig.looper.pressMain();
+            if (start == length) rig.looper.pressMain();
+        });
+
+        float seam = 0.0f, inside = 0.0f;
+        for (int i = 2 * length - 400; i < 2 * length + 400; ++i) seam = juce::jmax(seam, std::abs(out[(size_t) i] - out[(size_t) i - 1]));
+        for (int i = 2 * length + 10000; i < 2 * length + 20000; ++i) inside = juce::jmax(inside, std::abs(out[(size_t) i] - out[(size_t) i - 1]));
+        std::printf("Looper seam: max step %.4f at the seam, %.4f inside\n", seam, inside);
+        CHECK(seam < 2.0f * inside, "loop seam crossfade");
+    }
+
+    // 5. Стоп / игра / очистка; сохранение WAV
+    {
+        LooperRig rig;
+        rig.looper.setDrumsWithLoop(false);
+        std::vector<float> in((size_t) (sr * 6.0), 0.0f);
+        in[500] = 0.5f;
+        const auto out = rig.run(in, [&](int start)
+        {
+            if (start == 0) rig.looper.pressMain();
+            if (start == 48000) rig.looper.pressMain();
+            if (start == 96000) rig.looper.stop();
+            if (start == 144000) rig.looper.play();
+        });
+
+        const auto hits = peaksAbove(out, 0.3f);
+        const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("guitartx_loop.wav");
+        juce::String error;
+        const bool saved = rig.looper.saveToFile(file, error);
+        const bool sizeOk = file.getSize() > 48000 * 6;
+        file.deleteFile();
+
+        rig.looper.clear();
+        rig.run(std::vector<float>(LooperRig::block, 0.0f));
+
+        std::printf("Looper stop/play: %s, saved %s\n", joinInts(hits).toRawUTF8(), saved ? "yes" : error.toRawUTF8());
+        CHECK(hits == std::vector<int>({ 500, 48500, 144500, 192500, 240500 }) && saved && sizeOk
+              && rig.looper.getState() == LooperProcessor::State::empty, "stop / play / save / clear");
+    }
+}
+
 // Отметка этапа для CI: при падении процесса последняя отметка показывает, где
 static void stage(const char* name)
 {
@@ -1853,6 +2345,103 @@ static void stage(const char* name)
         std::printf("::notice::test stage %s\n", name);
 
     std::fflush(stdout);
+}
+
+//==============================================================================
+// Модели усилителя: конечный выход, громкость близка к Modern, звучат по-разному
+static std::vector<float> runDistortion(int model, float gain, std::vector<float> input)
+{
+    const double sr = 48000.0;
+    const int block = 256;
+    DistortionProcessor d;
+    d.setPlayConfigDetails(2, 2, sr, block);
+    setParam(d, "model", (float) model);
+    setParam(d, "gain", gain);
+    d.prepareToPlay(sr, block);
+
+    juce::AudioBuffer<float> buf(2, block);
+    juce::MidiBuffer midi;
+
+    for (size_t i = 0; i + (size_t) block <= input.size(); i += (size_t) block)
+    {
+        for (int k = 0; k < block; ++k)
+        {
+            buf.setSample(0, k, input[i + (size_t) k]);
+            buf.setSample(1, k, input[i + (size_t) k]);
+        }
+
+        d.processBlock(buf, midi);
+
+        for (int k = 0; k < block; ++k)
+            input[i + (size_t) k] = buf.getSample(0, k);
+    }
+
+    return input;
+}
+
+static void testAmpModels()
+{
+    const double sr = 48000.0;
+    const int n = 256 * 750;   // 4 с
+    std::vector<float> riff((size_t) n);
+
+    // Чаги на E2 и аккорд на A2 + E3: затухающие ноты с гармониками
+    for (int i = 0; i < n; ++i)
+    {
+        const double t = i / sr, local = std::fmod(t, 0.25);
+        const bool chord = std::fmod(t, 1.0) >= 0.75;
+        const double f = chord ? 110.0 : 82.41;
+        float s = 0.0f;
+
+        for (int h = 1; h <= 6; ++h)
+            s += (float) (std::sin(2.0 * juce::MathConstants<double>::pi * f * h * t) / h);
+
+        if (chord)
+            s += 0.7f * (float) std::sin(2.0 * juce::MathConstants<double>::pi * 164.81 * t);
+
+        riff[(size_t) i] = 0.25f * s * (float) std::exp(-local * (chord ? 4.0 : 18.0));
+    }
+
+    auto rmsDb = [] (const std::vector<float>& x, size_t from)
+    {
+        double sum = 0.0;
+        for (size_t i = from; i < x.size(); ++i) sum += (double) x[i] * x[i];
+        return 10.0 * std::log10(sum / (double) (x.size() - from) + 1.0e-20);
+    };
+
+    const auto modern = runDistortion(0, 30.0f, riff);
+    const double modernDb = rmsDb(modern, 4800);
+
+    double checksum = 0.0;
+    for (size_t i = 0; i < modern.size(); i += 7) checksum += std::abs((double) modern[i]) * (double) (i % 13 + 1);
+    std::printf("Amp models: Modern %.2f dB (checksum %.6f)\n", modernDb, checksum);
+    // Эталон - исходный дисторшн v0.4.1: Modern обязан звучать как раньше (старые пресеты)
+    CHECK(std::abs(checksum / 23109.305125 - 1.0) < 1.0e-3, "Modern changed vs v0.4.1: checksum %.6f", checksum);
+
+    const auto names = DistortionProcessor::modelNames();
+    CHECK(names.size() == 5, "expected 5 amp models");
+
+    for (int model = 1; model < names.size(); ++model)
+    {
+        for (float gain : { 10.0f, 30.0f, 45.0f })
+        {
+            const auto out = runDistortion(model, gain, riff);
+            bool finite = true;
+            for (float v : out) finite = finite && std::isfinite(v) && std::abs(v) < 4.0f;
+
+            const double db = rmsDb(out, 4800);
+            const double reference = rmsDb(runDistortion(0, gain, riff), 4800);
+            double diff = 0.0;
+            for (size_t i = 4800; i < out.size(); ++i) diff += std::abs((double) out[i] - (double) modern[i]);
+
+            std::printf("  %-10s gain %2.0f: %6.2f dB (Modern %6.2f, %+.2f)\n", names[model].toRawUTF8(), gain, db, reference, db - reference);
+            CHECK(finite, "%s: output not finite / too loud", names[model].toRawUTF8());
+            CHECK(std::abs(db - reference) < 3.0, "%s gain %g: level %.2f dB vs Modern %.2f", names[model].toRawUTF8(), gain, db, reference);
+
+            if (gain == 30.0f)
+                CHECK(diff / (double) (out.size() - 4800) > 0.005, "%s sounds the same as Modern", names[model].toRawUTF8());
+        }
+    }
 }
 
 int main()
@@ -1888,10 +2477,16 @@ int main()
     testDrums();
     stage("testRiffAnalysis");
     testRiffAnalysis();
+    stage("testListenLiveGuitar");
+    testListenLiveGuitar();
     stage("testDrumGenerator");
     testDrumGenerator();
     stage("testDrumFillsAndFollow");
     testDrumFillsAndFollow();
+    stage("testLooper");
+    testLooper();
+    stage("testAmpModels");
+    testAmpModels();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

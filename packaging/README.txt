@@ -2,8 +2,8 @@ GuitarTX {{VERSION}} (Windows x64)
 ==============================
 
 Standalone guitar processor in the Doom / Mick Gordon spirit:
-Noise Gate, Overdrive, Distortion, Cabinet (IR or built-in models), EQ, Tone Match, Sub 808, Chaos,
-Pitch, Glitch (stutter / glitch / freeze), Delay, Reverb, drum machine,
+Noise Gate, Overdrive, Distortion (amp models Modern / American / British / Doom Fuzz / Tight), Cabinet (IR or built-in models), EQ, Tone Match, Sub 808, Chaos,
+Pitch, Glitch (stutter / glitch / freeze), Delay, Reverb, drum machine, looper,
 Master compressor + limiter, Tuner, reorderable chain, parallel lane, presets.
 
 Run: GuitarTX.exe (no installer needed).
@@ -19,6 +19,10 @@ Drums: DRUMS button (play / stop next to it). Kits Doom / Metal / Industrial or 
      32-step sequencer, 14 factory patterns, global tempo + Tap. Your patterns: %APPDATA%\GuitarTX\Patterns
      LISTEN: play a riff, stop - tempo and a matching beat are set. FOLLOW: drums start with your first note
      and follow your tempo. Generate by style, Vary, fills every 2 / 4 / 8 loops.
+     LISTEN takes are saved to Documents\GuitarTX\Recordings\Listen (last 30).
+Looper: LOOP button. Record -> Play -> Overdub (Space), Stop, Undo / Redo, x2, Clear, Save WAV
+     (Documents\GuitarTX\Recordings\Loops). With drums the loop snaps to bars; without drums the first loop
+     sets the tempo and starts the drums. Footswitch: press - main, double press - stop, hold 2 s - clear.
 Snapshots A/B: two sets of knob values / On-Off per preset (right-click A or B to copy).
 Preset browser: Browse button - search, favourites, tags, folders, import / export (.gtxpreset).
 Presets: %APPDATA%\GuitarTX\Presets

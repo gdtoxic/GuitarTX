@@ -9,6 +9,13 @@ namespace
     constexpr float  binTolerance    = 0.15f;   // ~+1.5 дБ на бин
     constexpr float  minRelativeFlux = 0.004f;  // от сильнейшей атаки записи (она обычно после тишины)
     constexpr float  minStrength     = 0.08f;   // слабее - шум и биения, а не нота
+    constexpr float  legatoFlux      = 0.1f;    // слабее (от типичной атаки) - атака без медиатора?
+    constexpr float  legatoChange    = 0.7f;    // ...тогда спектр до / после должен заметно отличаться
+    constexpr float  changeLowHz     = 60.0f;   // полоса сравнения: основные тоны и нижние гармоники
+    constexpr float  changeHighHz    = 1500.0f;
+    constexpr float  legatoMaxDropDb = 6.0f;    // нота легато звучит дальше, а не гаснет
+    constexpr float  legatoBelowPeakDb = 30.0f;
+    constexpr float  legatoStrength  = 0.15f;   // слабые, но настоящие ноты
 
     struct Frames
     {
@@ -16,6 +23,43 @@ namespace
         std::vector<float> level;             // общий уровень, дБ
         std::vector<float> flux;              // рост энергии по полосам, дБ
         float peakLevel = -120.0f;
+
+        // Лог-спектры в полосе changeLowHz..changeHighHz: отличить смену ноты легато
+        // (хаммер-он, пулл-офф, глушение аккорда) от биений звенящего аккорда
+        std::vector<float> spectra;
+        int spectrumBins = 0;
+
+        // Корреляция лог-спектров: 1 - "та же нота", меньше - другая высота / состав аккорда.
+        // Громкость (сдвиг лог-спектра) не влияет
+        float similarity(int a, int b) const noexcept
+        {
+            const int n = (int) level.size();
+            a = juce::jlimit(0, n - 1, a);
+            b = juce::jlimit(0, n - 1, b);
+            const float* x = spectra.data() + (size_t) a * (size_t) spectrumBins;
+            const float* y = spectra.data() + (size_t) b * (size_t) spectrumBins;
+            double mx = 0.0, my = 0.0;
+
+            for (int k = 0; k < spectrumBins; ++k)
+            {
+                mx += x[k];
+                my += y[k];
+            }
+
+            mx /= spectrumBins;
+            my /= spectrumBins;
+            double xy = 0.0, xx = 0.0, yy = 0.0;
+
+            for (int k = 0; k < spectrumBins; ++k)
+            {
+                const double dx = x[k] - mx, dy = y[k] - my;
+                xy += dx * dy;
+                xx += dx * dx;
+                yy += dy * dy;
+            }
+
+            return xx > 0.0 && yy > 0.0 ? (float) (xy / std::sqrt(xx * yy)) : 1.0f;
+        }
     };
 
     // Спектральный поток (SuperFlux-lite): рост лог-спектра между кадрами, с максимум-фильтром по
@@ -38,6 +82,10 @@ namespace
         const int maxBin = juce::jmin(size / 2, (int) (8000.0 * size / sampleRate));
         const int minBin = juce::jmax(1, (int) (100.0 * size / sampleRate));
         const int numFrames = numSamples / hop;
+        const int changeLow  = juce::jmax(1, (int) (changeLowHz * size / sampleRate));
+        const int changeHigh = juce::jmin(size / 2, (int) (changeHighHz * size / sampleRate));
+        frames.spectrumBins = juce::jmax(1, changeHigh - changeLow);
+        frames.spectra.assign((size_t) numFrames * (size_t) frames.spectrumBins, 0.0f);
 
         // Сравнение с кадром на 2 хопа раньше (10 мс): атака размазана по окну
         std::array<std::vector<float>, 3> history;
@@ -72,6 +120,11 @@ namespace
 
             fft.performFrequencyOnlyForwardTransform(buffer.data(), true);
 
+            float* spectrum = frames.spectra.data() + (size_t) f * (size_t) frames.spectrumBins;
+
+            for (int k = 0; k < frames.spectrumBins; ++k)
+                spectrum[k] = std::log1p(100.0f * buffer[(size_t) (changeLow + k)]);
+
             auto& current  = history[(size_t) (f % 3)];
             const auto& previous = history[(size_t) ((f + 1) % 3)];   // кадр f - 2
 
@@ -97,6 +150,25 @@ namespace
         return frames;
     }
 
+    // "Типичная сильная атака": медиана верхней четверти локальных пиков потока. Не максимум -
+    // первая нота после тишины в разы "сильнее" остальных и задрала бы порог для слабых нот
+    float typicalAttack(const std::vector<float>& flux)
+    {
+        std::vector<float> peaks;
+        const int n = (int) flux.size();
+
+        for (int f = 1; f + 1 < n; ++f)
+            if (flux[(size_t) f] > 0.0f && flux[(size_t) f] >= flux[(size_t) f - 1] && flux[(size_t) f] > flux[(size_t) f + 1])
+                peaks.push_back(flux[(size_t) f]);
+
+        if (peaks.empty())
+            return 0.0f;
+
+        std::sort(peaks.begin(), peaks.end(), std::greater<float>());
+        const size_t top = juce::jmax((size_t) 1, peaks.size() / 4);
+        return juce::jmax(peaks[top / 2], 0.25f * peaks.front());
+    }
+
     std::vector<RiffAnalyzer::Onset> pickOnsets(const Frames& frames)
     {
         std::vector<RiffAnalyzer::Onset> onsets;
@@ -104,7 +176,9 @@ namespace
         const int minGap = juce::jmax(1, juce::roundToInt(minGapSeconds / frames.hop));
 
         std::vector<std::pair<int, float>> peaks;
-        const float globalMax = frames.flux.empty() ? 0.0f : *std::max_element(frames.flux.begin(), frames.flux.end());
+        std::vector<float> local;
+        local.reserve(64);
+        const float globalMax = typicalAttack(frames.flux);
 
         for (int f = 0; f < n; ++f)
         {
@@ -121,24 +195,41 @@ namespace
             if (! isMax)
                 continue;
 
-            // Адаптивный порог: в 1.5 раза выше среднего вокруг (ровный звук не даёт ложных атак)
-            double sum = 0.0;
-            int count = 0;
+            // Адаптивный порог: выше медианы вокруг (ровный звук не даёт ложных атак). Медиана, а не
+            // среднее: громкий аккорд рядом не "прячет" тихий палм-мьют за ним
+            local.clear();
 
-            for (int k = juce::jmax(0, f - 40); k <= juce::jmin(n - 1, f + 10); ++k)
+            for (int k = juce::jmax(0, f - 30); k <= juce::jmin(n - 1, f + 10); ++k)
+                local.push_back(frames.flux[(size_t) k]);
+
+            std::nth_element(local.begin(), local.begin() + (std::ptrdiff_t) (local.size() / 2), local.end());
+
+            const bool legato = v < legatoFlux * globalMax;
+
+            if (legato)
             {
-                sum += frames.flux[(size_t) k];
-                ++count;
-            }
+                // Слабый рост без медиатора (хаммер-он, пулл-офф): нота, только если после неё звучит
+                // другая высота / другой аккорд (не биения), и звук не гаснет. Сравнение 20 мс до
+                // и 30 мс после - вне размытия окна. Тогда локальный порог не нужен: такие атаки
+                // всегда тише соседних с медиатором
+                const float before = frames.level[(size_t) juce::jmax(0, f - 4)];
+                const float after  = frames.level[(size_t) juce::jmin(n - 1, f + 6)];
+                const bool sustained = after > before - legatoMaxDropDb && after > frames.peakLevel - legatoBelowPeakDb;
 
-            if (v < 1.5f * (float) (sum / juce::jmax(1, count)) + minRelativeFlux * globalMax)
+                if (! sustained || frames.similarity(f - 4, f + 6) > legatoChange)
+                    continue;
+            }
+            else if (v < 2.0f * local[local.size() / 2] + minRelativeFlux * globalMax)
+            {
                 continue;
+            }
 
             // Сила: в основном громкость после атаки (акценты на 3-6 дБ громче), немного - резкость атаки.
             // Поток сам по себе не годится: нота после тишины всегда "сильнее" ноты поверх звучащей
             const float after = frames.level[(size_t) juce::jmin(n - 1, f + 4)];
             const float loudness = juce::jlimit(0.05f, 1.0f, (after - frames.peakLevel + 15.0f) / 15.0f);
-            const float raw = 0.75f * loudness + 0.25f * std::sqrt(v / globalMax);
+            const float raw = legato ? juce::jmax(legatoStrength, 0.75f * loudness)
+                                     : 0.75f * loudness + 0.25f * std::sqrt(juce::jmin(1.0f, v / globalMax));
 
             if (! peaks.empty() && f - peaks.back().first < minGap)
             {

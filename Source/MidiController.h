@@ -22,7 +22,8 @@ class MidiController : private juce::MidiInputCallback,
                        private juce::Timer
 {
 public:
-    enum class Kind { parameter, footswitch, nextPreset, previousPreset, tuner, record, snapshot, tapTempo, drums, listen };
+    enum class Kind { parameter, footswitch, nextPreset, previousPreset, tuner, record, snapshot, tapTempo, drums, listen,
+                      looper, looperStop, looperUndo, looperClear };
     // Toggle - каждое нажатие переключает; Hold - включено, пока кнопка нажата (отпустил - выкл).
     // Имена в XML сохранены для совместимости: momentary = Toggle, latching = Hold
     enum class SwitchMode { momentary, latching };
@@ -107,6 +108,8 @@ public:
     std::function<void()>                onToggleDrums;
     std::function<void()>                onListen;          // LISTEN драм-машины
     std::function<void(Kind, bool down)> onHold;            // режим Hold: нажали (true) / отпустили (false)
+    std::function<void(bool down)>       onLooperSwitch;    // главная кнопка лупера: каждое нажатие и отпускание
+    std::function<void(Kind)>            onLooperAction;    // Stop / Undo / Clear лупера
     std::function<void(const Mapping&)>  onLearned;
     std::function<void()>                onLearnTimeout;    // за learnTimeoutMs ничего не пришло
     std::function<void()>                onMappingsChanged; // сохранить настройки

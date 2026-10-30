@@ -12,6 +12,8 @@
 // LISTEN: нажать, сыграть рифф с сильной доли (1-2 такта, можно дважды) и замолчать -
 // через 2 с тишины (или по повторному нажатию) рифф анализируется, выставляется темп,
 // паттерн включается (во время игры - с начала следующего такта).
+// Каждый дубль LISTEN сохраняется в WAV (Documents\GuitarTX\Recordings\Listen, последние 30) -
+// можно переслушать, проанализировать снова (File...) или прислать для настройки анализа.
 class DrumAssistant : private juce::Timer
 {
 public:
@@ -29,6 +31,16 @@ public:
     // --- Анализ записанного
     bool analyzeFile(const juce::File& file);
     bool analyzeBuffer(const std::vector<float>& mono, double sampleRate);
+
+    // Папка дублей LISTEN; пустой File - не сохранять
+    static juce::File defaultTakesFolder();
+    void setTakesFolder(const juce::File& folder) { takesFolder = folder; }
+    juce::File getTakesFolder() const             { return takesFolder; }
+    juce::File getLastTake() const                { return lastTake; }
+    static constexpr int maxTakes = 30;
+
+    // Сохранить дубль (WAV 24 бит, моно); в имени - темп или "no riff". Старые сверх maxTakes удаляются
+    juce::File saveTake(const std::vector<float>& mono, double sampleRate, const RiffAnalysis& riff);
 
     bool hasRiff() const noexcept { return lastRiff.valid; }
     const RiffAnalysis& getRiff() const noexcept { return lastRiff; }
@@ -58,6 +70,7 @@ private:
     std::vector<float> recorded, preRoll;
     double noteStartMs = 0.0, lastLoudMs = 0.0;
     RiffAnalysis lastRiff;
+    juce::File takesFolder = defaultTakesFolder(), lastTake;
     juce::String status;
     juce::Random random;
 

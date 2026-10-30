@@ -276,7 +276,8 @@ public:
         listenButton.onClick = [this] { assistant.toggleListen(); updateAssistant(); };
         addAndMakeVisible(listenButton);
 
-        fileButton.setTooltip("Analyze a riff from a WAV / AIFF / FLAC file");
+        fileButton.setTooltip("Analyze a riff from a WAV / AIFF / FLAC file. "
+                              "Every LISTEN take is saved to Documents\\GuitarTX\\Recordings\\Listen (last 30)");
         fileButton.onClick = [this] { chooseRiffFile(); };
         addAndMakeVisible(fileButton);
 
@@ -659,7 +660,10 @@ private:
 
     void chooseRiffFile()
     {
-        riffChooser = std::make_unique<juce::FileChooser>("Riff to analyze (DI guitar works best)", juce::File(),
+        // По умолчанию - папка дублей LISTEN: удобно переанализировать последний
+        const auto takes = assistant.getTakesFolder();
+        riffChooser = std::make_unique<juce::FileChooser>("Riff to analyze (DI guitar works best)",
+                                                          takes.isDirectory() ? takes : juce::File(),
                                                           "*.wav;*.aif;*.aiff;*.flac");
         juce::Component::SafePointer<Content> safeThis(this);
 

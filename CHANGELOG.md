@@ -2,6 +2,39 @@
 
 All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
 
+## [0.5.0] - 2026-10-31
+
+### Added
+- **Looper** (LOOP button in the header, or a MIDI footswitch), up to 60 s, after the guitar chain (drums are not
+  recorded into the loop):
+  - one button: Record → Play → Overdub → Play; from Stop — Play. **Stop**, **Undo / Redo** of the last overdub,
+    **x2** (double the length), **Clear**, **Save WAV** (`Documents\GuitarTX\Recordings\Loops`), Level;
+  - with the drums playing the loop snaps to bars: pressed a little late (up to 15 % of a bar) — the recording
+    still starts / ends on the downbeat, otherwise it waits for the next one; the length is a whole number of bars;
+  - without drums the first loop sets its own length and the tempo (1 / 2 / 4 / 8 bars), and the drums start
+    exactly with the loop ("Drums start / stop with the loop");
+  - the loop seam is crossfaded with the continuation of the recording (no click), overdub layers are merged
+    in the background without gaps;
+  - footswitch gestures: press — main action, double press — stop (or cancel a recording that just started),
+    hold 2 s — clear. MIDI: **Looper**, **Looper stop**, **Looper undo**, **Looper clear**. Space in the looper window.
+- **Amp models** in Distortion (new **Model** knob): **Modern** (the previous sound, default — old presets sound
+  exactly the same), **American** (5150 / Rectifier: more gain, scooped mids, power-amp sag), **British**
+  (JCM800: mid push, softer second stage, touch-sensitive), **Doom Fuzz** (Big Muff-style silicon fuzz, endless
+  sustain, deep mid scoop), **Tight** (djent: low end cut before clipping, bright attack). Levels are matched
+  between models. Factory presets Sludge Fuzz, Drone Wall, Funeral Doom (Doom Fuzz), Djent Tight, Tight Chug
+  (Tight), Thrash Rhythm, Scooped 7-String (American), Classic Heavy, Crunch Rhythm (British) use them.
+- **LISTEN takes** are saved to `Documents\GuitarTX\Recordings\Listen` (the last 30): listen back, analyze
+  again with **File...** (opens this folder), or send a take that was analyzed wrong.
+
+### Changed
+- **LISTEN with a real guitar**: note detection is tuned on a Karplus-Strong guitar model (power chords, palm
+  mutes, ringing open chords, hammer-ons / pull-offs, slides, ±15 ms human timing, noise and hum):
+  - palm mutes right after an accented chord are no longer lost (local median threshold instead of the mean);
+  - hammer-ons and pull-offs (no pick attack) are found by the pitch change;
+  - a ringing chord no longer produces false notes (beating is told apart from a new note);
+  - the threshold no longer depends on the single loudest attack (the first note after silence).
+  On the test set: 2 wrong steps out of 192 (v0.4.1: 22).
+
 ## [0.4.1] - 2026-10-25
 
 ### Added

@@ -10,15 +10,17 @@
 #include "Recorder.h"
 #include "DrumMachine.h"
 #include "ListenProcessor.h"
+#include "LooperProcessor.h"
 
 // Аудиодвижок: устройство + граф обработки.
 //
 // Граф:
 //                                 +-> [основная цепочка] ---------+
-//   Input -> RecIn -> Listen -> MeterIn -> Tuner -> InputGain +              +-> Master -> Fade -> Drums -> OutputGain -> MeterOut -> RecOut -> Output
+//   Input -> RecIn -> Listen -> MeterIn -> Tuner -> InputGain +              +-> Master -> Fade -> Looper -> Drums -> OutputGain -> MeterOut -> RecOut -> Output
 //                                 +-> [параллельный эффект 1] ----+
 //                                 +-> [параллельный эффект 2] ----+
 //
+// Looper - лупер: пишет обработанную гитару (без барабанов), смена пресета луп не прерывает.
 // Listen - "уши" драм-машины: запись риффа (LISTEN) и атаки для FOLLOW, по сухому сигналу.
 // Drums - драм-машина: барабаны добавляются к гитаре после мастер-секции и Fade
 // (перестройка цепочки при смене пресета их не прерывает).
@@ -101,6 +103,7 @@ public:
     // Драм-машина и её вход (сухая гитара)
     DrumMachine& getDrums() noexcept { return *drums; }
     ListenProcessor& getListener() noexcept { return *listener; }
+    LooperProcessor& getLooper() noexcept   { return *looper; }
 
     // Задержка вход + выход текущего устройства (сэмплы)
     int getRoundTripLatency() const;
@@ -146,7 +149,7 @@ private:
 
     Node::Ptr audioInputNode, audioOutputNode;
     Node::Ptr recorderInNode, recorderOutNode;
-    Node::Ptr listenNode, meterInNode, tunerNode, gainNode, masterNode, drumsNode, outputGainNode, fadeNode, meterOutNode;
+    Node::Ptr listenNode, looperNode, meterInNode, tunerNode, gainNode, masterNode, drumsNode, outputGainNode, fadeNode, meterOutNode;
 
     MeterProcessor* meterIn  = nullptr;
     TunerProcessor* tuner    = nullptr;
@@ -155,6 +158,7 @@ private:
     MasterProcessor* master    = nullptr;
     DrumMachine*    drums    = nullptr;
     ListenProcessor* listener = nullptr;
+    LooperProcessor* looper   = nullptr;
     FadeProcessor*  fade     = nullptr;
     MeterProcessor* meterOut = nullptr;
 

@@ -111,6 +111,9 @@ void AudioEngine::createGraph()
     drums    = addFixedNode(std::make_unique<DrumMachine>(),              drumsNode);
     listener = addFixedNode(std::make_unique<ListenProcessor>(),          listenNode);
     drums->setOnsetSource(listener);
+    looper   = addFixedNode(std::make_unique<LooperProcessor>(),          looperNode);
+    looper->setClockSource(listener);
+    looper->setDrums(drums);
     outputGain = addFixedNode(std::make_unique<GainProcessor>(),          outputGainNode);
     fade     = addFixedNode(std::make_unique<FadeProcessor>(),            fadeNode);
     meterOut = addFixedNode(std::make_unique<MeterProcessor>("MeterOut"), meterOutNode);
@@ -125,7 +128,7 @@ void AudioEngine::rebuildConnections()
         graph.removeConnection(connection, UpdateKind::none);
 
     std::vector<Node::Ptr> chain;
-    chain.reserve(rack.size() + 11);
+    chain.reserve(rack.size() + 12);
 
     chain.push_back(recorderInNode);
     chain.push_back(listenNode);
@@ -134,7 +137,8 @@ void AudioEngine::rebuildConnections()
     chain.push_back(gainNode);
     chain.insert(chain.end(), rack.begin(), rack.end());
     chain.push_back(masterNode);
-    chain.push_back(fadeNode);         // глушит только гитару: барабаны не прерываются при смене пресета
+    chain.push_back(fadeNode);         // глушит только гитару: луп и барабаны не прерываются при смене пресета
+    chain.push_back(looperNode);
     chain.push_back(drumsNode);
     chain.push_back(outputGainNode);
     chain.push_back(meterOutNode);

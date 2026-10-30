@@ -80,6 +80,14 @@ public:
     // Задержка вход + выход (сэмплы): атаки приходят позже на столько, сколько звук идёт "по кругу"
     void setLatencyCompensation(int samples) noexcept { latency.store(juce::jmax(0, samples)); }
 
+    // --- Часы для лупера (время - сэмплы часов ListenProcessor, общих для всего графа)
+    bool isRunningNow() const noexcept          { return runningNow.load(); }
+    juce::int64 getBarAnchor() const noexcept   { return barAnchor.load(); }    // начало последнего такта
+    double getBarSamples() const noexcept       { return 4.0 * GlobalTempo::get().getBeatSamples(sampleRate); }
+
+    // Старт ровно в момент time (часы графа) - например, с началом лупа
+    void requestStartAt(juce::int64 time) noexcept { pendingStartAt.store(time); }
+
     // --- Звук
     Kit  getKit() const noexcept { return kit; }
     void setKit(Kit newKit);
@@ -190,6 +198,9 @@ private:
     std::atomic<int>  latency { 0 };
     std::atomic<double> followBaseBpm { 120.0 };
     ListenProcessor* onsetSource = nullptr;
+    std::atomic<bool> runningNow { false };
+    std::atomic<juce::int64> barAnchor { 0 }, pendingStartAt { -1 };
+    juce::int64 ownClock = 0;
 
     // --- Аудиопоток
     std::array<SoundPtr, numTracks> sounds;

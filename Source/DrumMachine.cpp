@@ -596,6 +596,24 @@ void DrumMachine::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     // FOLLOW: атаки гитары этого блока (в т.ч. старт с первой ноты)
     followOnsets(numSamples, stepSamples);
 
+    // Часы графа: начало этого блока
+    const juce::int64 blockStart = onsetSource != nullptr ? onsetSource->getBlockStart() : ownClock;
+    ownClock += numSamples;
+
+    // Запланированный старт (лупер): ровно в нужном сэмпле этого блока
+    if (const auto startAt = pendingStartAt.load(); startAt >= 0 && startAt < blockStart + numSamples)
+    {
+        pendingStartAt.store(-1);
+
+        if (! running)
+        {
+            playRequested.store(true);
+            startOnHit.store(false);
+            gridTime  = (double) std::max<juce::int64>(0, startAt - blockStart);
+            startedAt = (int) gridTime;
+        }
+    }
+
     const bool shouldRun = playRequested.load();
 
     if (shouldRun && ! running)
@@ -618,6 +636,8 @@ void DrumMachine::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         playingFillNow.store(false);
         currentStep.store(-1);
     }
+
+    runningNow.store(running);
 
     int rendered = 0;
 
@@ -650,6 +670,10 @@ void DrumMachine::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             }
 
             currentStep.store(step);
+
+            // Начало такта (4 доли) - якорь для лупера
+            if (step % (4 * juce::jmax(1, active.stepsPerBeat)) == 0)
+                barAnchor.store(blockStart + position);
 
             gridTime += stepSamples + startShift;
             startShift = 0.0;

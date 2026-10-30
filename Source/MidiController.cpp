@@ -24,6 +24,10 @@ namespace
             case K::tapTempo:       return "tapTempo";
             case K::drums:          return "drums";
             case K::listen:         return "listen";
+            case K::looper:         return "looper";
+            case K::looperStop:     return "looperStop";
+            case K::looperUndo:     return "looperUndo";
+            case K::looperClear:    return "looperClear";
         }
         return "parameter";
     }
@@ -31,7 +35,8 @@ namespace
     std::optional<MidiController::Kind> kindFromString(const juce::String& text)
     {
         using K = MidiController::Kind;
-        for (auto kind : { K::parameter, K::footswitch, K::nextPreset, K::previousPreset, K::tuner, K::record, K::snapshot, K::tapTempo, K::drums, K::listen })
+        for (auto kind : { K::parameter, K::footswitch, K::nextPreset, K::previousPreset, K::tuner, K::record, K::snapshot, K::tapTempo, K::drums, K::listen,
+                           K::looper, K::looperStop, K::looperUndo, K::looperClear })
             if (kindToString(kind) == text)
                 return kind;
         return std::nullopt;
@@ -75,6 +80,10 @@ bool MidiController::supportsHold(Kind kind) noexcept
         case Kind::nextPreset:
         case Kind::previousPreset:
         case Kind::tapTempo:
+        case Kind::looper:
+        case Kind::looperStop:
+        case Kind::looperUndo:
+        case Kind::looperClear:
             return false;
     }
 
@@ -362,6 +371,19 @@ void MidiController::applyController(int channel, int controller, int value)
                 if (newPress && onListen)
                     onListen();
                 break;
+
+            case Kind::looper:
+                // Жесты (двойное нажатие, удержание) распознаются по нажатию и отпусканию
+                if (changed && onLooperSwitch)
+                    onLooperSwitch(pressed);
+                break;
+
+            case Kind::looperStop:
+            case Kind::looperUndo:
+            case Kind::looperClear:
+                if (newPress && onLooperAction)
+                    onLooperAction(mapping.kind);
+                break;
         }
     }
 }
@@ -563,6 +585,10 @@ juce::String MidiController::describeTarget(const LearnTarget& target) const
         case Kind::tapTempo:       return "Tap tempo";
         case Kind::drums:          return "Drums play/stop";
         case Kind::listen:         return "Drums LISTEN";
+        case Kind::looper:         return "Looper (rec / play / dub)";
+        case Kind::looperStop:     return "Looper stop";
+        case Kind::looperUndo:     return "Looper undo / redo";
+        case Kind::looperClear:    return "Looper clear";
     }
 
     return {};
