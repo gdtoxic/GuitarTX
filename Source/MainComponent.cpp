@@ -26,21 +26,19 @@ MainComponent::MainComponent()
     juce::LookAndFeel::setDefaultLookAndFeel(&lookAndFeel);
     setLookAndFeel(&lookAndFeel);
 
-    // Title
-    titleLabel.setText("GuitarTX", juce::dontSendNotification);
-    titleLabel.setJustificationType(juce::Justification::centredLeft);
-    titleLabel.setFont(juce::FontOptions(30.0f, juce::Font::bold));
-    addAndMakeVisible(titleLabel);
+    addAndMakeVisible(logo);
 
     // Кнопка окна настроек звука
     audioSettingsButton.onClick = [this] { showAudioSettings(); };
     addAndMakeVisible(audioSettingsButton);
 
     // Тюнер: окно поверх педалборда, по умолчанию глушит выход
-    tunerButton.setTooltip("Tuner (Esc to close)");
-    tunerButton.setColour(juce::TextButton::buttonOnColourId, GuitarTXLookAndFeel::accent.darker(0.3f));
+    tunerButton.setText("Tuner");
     tunerButton.onClick = [this] { setTunerVisible(! tuner.isActive()); };
     addAndMakeVisible(tunerButton);
+
+    // Полоса сцены - до ручек Input / Output: они лежат поверх неё
+    addAndMakeVisible(stage);
 
     tuner.onCloseRequested = [this] { setTunerVisible(false); };
 
@@ -70,8 +68,8 @@ MainComponent::MainComponent()
     restoreRack();
 
     // Входной и выходной gain (в дБ)
-    setupKnob(inputKnob,  inputLabel,  "Input");
-    setupKnob(outputKnob, outputLabel, "Output");
+    setupKnob(inputKnob,  inputLabel,  "IN");
+    setupKnob(outputKnob, outputLabel, "OUT");
 
     inputKnob.setValue(audioEngine.getInputGainDb(), juce::dontSendNotification);
     inputKnob.onValueChange = [this] { audioEngine.setInputGainDb((float) inputKnob.getValue()); };
@@ -117,6 +115,7 @@ MainComponent::MainComponent()
     setupDrums();
     setupLooper();
     setupSnapshots();
+    setupHeader();
 
     lastSavedRack    = audioEngine.createRackState();
     lastSavedSession = createSessionState();
@@ -137,7 +136,8 @@ MainComponent::MainComponent()
     startTimerHz(30);
 
     // setSize в конце, когда все компоненты уже созданы
-    setSize(780, 820);
+    // Размер окна фиксированный: раскладка рассчитана под него
+    setSize(windowWidth, windowHeight);
 }
 
 //==============================================================================
@@ -485,7 +485,7 @@ void MainComponent::setupMidi()
 
     EffectPanel::setMidiLearnHost(this);
 
-    midiButton.setTooltip("MIDI: pedals, footswitches, program change");
+    midiButton.setText("MIDI");
     midiButton.onClick = [this] { showMidiWindow(); };
     addAndMakeVisible(midiButton);
 }
@@ -500,16 +500,6 @@ void MainComponent::setupRecorder()
         recorder.restoreFromXml(*saved);
 
     recorder.onStoppedAutomatically = [this](const juce::String& message) { showTransientStatus(message, 8.0); };
-
-    recordButton.setTooltip("Record DI + processed sound to WAV (re-amp ready)");
-    recordButton.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(200, 40, 40));
-    recordButton.onClick = [this] { toggleRecording(); };
-    addAndMakeVisible(recordButton);
-
-    recordMenuButton.setButtonText(juce::String::fromUTF8("\xe2\x96\xbe"));
-    recordMenuButton.setTooltip("Recorder options, re-amp, recordings folder");
-    recordMenuButton.onClick = [this] { showRecorderMenu(); };
-    addAndMakeVisible(recordMenuButton);
 
     updateRecordButton();
 }
@@ -536,15 +526,6 @@ void MainComponent::setupDrums()
         if (drumAssistant.getStatus().isNotEmpty())
             showTransientStatus(drumAssistant.getStatus(), 4.0);
     };
-
-    drumsButton.setTooltip("Drum machine: patterns, kit, tempo");
-    drumsButton.onClick = [this] { showDrumWindow(); };
-    addAndMakeVisible(drumsButton);
-
-    drumsPlayButton.setTooltip("Drums play / stop");
-    drumsPlayButton.setColour(juce::TextButton::buttonOnColourId, GuitarTXLookAndFeel::accent);
-    drumsPlayButton.onClick = [this] { toggleDrums(); };
-    addAndMakeVisible(drumsPlayButton);
 
     updateDrumButtons();
 }
@@ -576,13 +557,8 @@ void MainComponent::toggleDrums()
 
 void MainComponent::updateDrumButtons()
 {
-    const bool playing = audioEngine.getDrums().isPlaying();
-    drumsPlayButton.setToggleState(playing, juce::dontSendNotification);
-
-    const auto text = playing ? juce::String::fromUTF8("\xe2\x96\xa0") : juce::String::fromUTF8("\xe2\x96\xb6");
-
-    if (drumsPlayButton.getButtonText() != text)
-        drumsPlayButton.setButtonText(text);
+    auto& drums = audioEngine.getDrums();
+    stage.setDrums(drums.isPlaying(), GlobalTempo::get().getBpm(), drums.getPattern().name);
 }
 
 //==============================================================================
@@ -598,10 +574,26 @@ void MainComponent::setupLooper()
     }
 
     looperSwitch.onStatus = [this](const juce::String& text) { showTransientStatus(text, 2.0); };
+}
 
-    looperButton.setTooltip("Looper (record / overdub / undo, synced to the drums)");
-    looperButton.onClick = [this] { showLooperWindow(); };
-    addAndMakeVisible(looperButton);
+void MainComponent::setupHeader()
+{
+    stage.onRecord      = [this] { toggleRecording(); };
+    stage.onRecordMenu  = [this] { showRecorderMenu(); };
+    stage.onLoopMain    = [this] { audioEngine.getLooper().pressMain(); };
+    stage.onLoopUndo    = [this] { audioEngine.getLooper().undo(); };
+    stage.onLoopRedo    = [this] { audioEngine.getLooper().redo(); };
+    stage.onLoopOpen    = [this] { showLooperWindow(); };
+    stage.onDrumsToggle = [this] { toggleDrums(); };
+    stage.onDrumsOpen   = [this] { showDrumWindow(); };
+
+    // A / B - один переключатель из двух половин
+    snapshotButtons[0].setConnectedEdges(juce::Button::ConnectedOnRight);
+    snapshotButtons[1].setConnectedEdges(juce::Button::ConnectedOnLeft);
+
+    updateRecordButton();
+    updateDrumButtons();
+    updateLooperButton();
 }
 
 void MainComponent::showLooperWindow()
@@ -618,20 +610,9 @@ void MainComponent::showLooperWindow()
 
 void MainComponent::updateLooperButton()
 {
-    using S = LooperProcessor::State;
-    const auto state = audioEngine.getLooper().getState();
-
-    const auto text = juce::String("LOOP ") + (state == S::empty ? juce::String() : LooperProcessor::stateName(state));
-    const auto colour = state == S::recording   ? juce::Colour::fromRGB(210, 40, 40)
-                      : state == S::armed       ? juce::Colour::fromRGB(170, 70, 40)
-                      : state == S::playing     ? juce::Colour::fromRGB(40, 150, 70)
-                      : state == S::overdubbing ? GuitarTXLookAndFeel::accent
-                                                : getLookAndFeel().findColour(juce::TextButton::buttonColourId);
-
-    if (looperButton.getButtonText().trim() != text.trim())
-        looperButton.setButtonText(text.trim());
-
-    looperButton.setColour(juce::TextButton::buttonColourId, colour);
+    const auto& looper = audioEngine.getLooper();
+    stage.setLooper(looper.getState(), looper.getPosition(), looper.getBars(), looper.getLengthSeconds(),
+                    looper.canUndo(), looper.canRedo(), looper.isWaitingForBar());
 }
 
 void MainComponent::saveRecorderSettings()
@@ -703,7 +684,7 @@ void MainComponent::showRecorderMenu()
 
     juce::Component::SafePointer<MainComponent> safeThis(this);
 
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&recordMenuButton),
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&stage.getRecordMenuTarget()),
                        [safeThis](int result)
                        {
                            if (safeThis == nullptr || result == 0)
@@ -789,23 +770,25 @@ void MainComponent::chooseReampFile()
 void MainComponent::updateRecordButton()
 {
     auto& recorder = audioEngine.getRecorder();
-    juce::String text = "REC";
+    juce::String detail;
 
     if (recorder.isReamping())
     {
-        text = "RE-AMP " + juce::String(juce::roundToInt(recorder.getReampProgress() * 100.0)) + "%";
+        detail = "Re-amp " + juce::String(juce::roundToInt(recorder.getReampProgress() * 100.0)) + "%";
     }
     else if (recorder.isRecording())
     {
         const int seconds = (int) recorder.getRecordedSeconds();
-        text = juce::String::fromUTF8("\xe2\x97\x8f ") + juce::String(seconds / 60).paddedLeft('0', 2)
-             + ":" + juce::String(seconds % 60).paddedLeft('0', 2);
+        detail = juce::String(seconds / 60).paddedLeft('0', 2) + ":" + juce::String(seconds % 60).paddedLeft('0', 2);
+    }
+    else
+    {
+        const auto options = recorder.getOptions();
+        detail = juce::String(options.recordDi && options.recordWet ? "DI + Wet" : options.recordDi ? "DI only" : "Wet only")
+               + juce::String::fromUTF8("  \xe2\x96\xbe");
     }
 
-    recordButton.setToggleState(recorder.isRecording() || recorder.isReamping(), juce::dontSendNotification);
-
-    if (recordButton.getButtonText() != text)
-        recordButton.setButtonText(text);
+    stage.setRecorder(recorder.isRecording() || recorder.isReamping(), detail);
 }
 
 //==============================================================================
@@ -816,9 +799,11 @@ void MainComponent::setupSnapshots()
     {
         auto& button = snapshotButtons[(size_t) i];
         button.setButtonText(i == 0 ? "A" : "B");
+        button.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2f3a3c));
+        button.setColour(juce::TextButton::textColourOnId, GuitarTXLookAndFeel::background);
         button.setTooltip("Snapshot " + button.getButtonText()
                           + ": another set of knob values and On/Off for the same chain. Right-click: copy");
-        button.setColour(juce::TextButton::buttonOnColourId, GuitarTXLookAndFeel::accent.darker(0.2f));
+        button.setColour(juce::TextButton::buttonOnColourId, GuitarTXLookAndFeel::accent);
         button.onClick      = [this, i] { selectSnapshot(i); };
         button.onRightClick = [this, i] { showSnapshotMenu(i); };
         addAndMakeVisible(button);
@@ -1019,9 +1004,11 @@ void MainComponent::setupKnob(juce::Slider& knob, juce::Label& label, const juce
 {
     label.setText(name, juce::dontSendNotification);
     label.setJustificationType(juce::Justification::centred);
+    label.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    label.setColour(juce::Label::textColourId, juce::Colour(0xff9aa0a6));
 
     knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    knob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 76, 20);
+    knob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 62, 16);
     knob.setRange(-60.0, 12.0, 0.1);
     knob.setSkewFactorFromMidPoint(-12.0);
     knob.setTextValueSuffix(" dB");
@@ -1185,6 +1172,9 @@ void MainComponent::timerCallback()
     updateDrumButtons();
     updateLooperButton();
 
+    if (audioEngine.getRecorder().isRecording() || audioEngine.getRecorder().isReamping())
+        updateRecordButton();
+
     if (transientTicks > 0 && --transientTicks == 0 && ! midi.isLearning())
     {
         transientStatus.clear();
@@ -1202,71 +1192,73 @@ void MainComponent::timerCallback()
 //==============================================================================
 void MainComponent::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour::fromRGB(25, 27, 30));
+    g.fillAll(GuitarTXLookAndFeel::background);
 
     g.setColour(juce::Colour::fromRGB(35, 38, 42));
-    g.fillRoundedRectangle(getLocalBounds().reduced(20).toFloat(), 10.0f);
+    g.fillRoundedRectangle(getLocalBounds().reduced(8).toFloat(), 10.0f);
+
+    // Линия под шапкой
+    g.setColour(juce::Colour(0xff3b4045));
+    g.fillRect(20, headerBottom, getWidth() - 40, 1);
 }
 
 //==============================================================================
 void MainComponent::resized()
 {
-    auto area = getLocalBounds().reduced(30);
+    auto area = getLocalBounds().reduced(20, 12);
 
     // Строка статуса внизу
     statusLabel.setBounds(area.removeFromBottom(22));
 
-    // Заголовок и кнопка настроек
-    auto header = area.removeFromTop(44);
-    audioSettingsButton.setBounds(header.removeFromRight(130).reduced(0, 8));
-    header.removeFromRight(8);
-    tunerButton.setBounds(header.removeFromRight(90).reduced(0, 8));
-    header.removeFromRight(8);
-    midiButton.setBounds(header.removeFromRight(70).reduced(0, 8));
-    header.removeFromRight(8);
-    drumsPlayButton.setBounds(header.removeFromRight(30).reduced(0, 8));
-    header.removeFromRight(2);
-    drumsButton.setBounds(header.removeFromRight(76).reduced(0, 8));
-    header.removeFromRight(8);
-    looperButton.setBounds(header.removeFromRight(96).reduced(0, 8));
-    header.removeFromRight(8);
-    recordMenuButton.setBounds(header.removeFromRight(24).reduced(0, 8));
-    header.removeFromRight(2);
-    recordButton.setBounds(header.removeFromRight(104).reduced(0, 8));
-    titleLabel.setBounds(header);
+    // Шапка: логотип | пресет + A/B (по центру) | тюнер, MIDI, настройки
+    auto header = area.removeFromTop(64);
+    headerBottom = header.getBottom();
 
-    // Тюнер закрывает всё ниже заголовка
+    logo.setBounds(header.removeFromLeft(200).reduced(0, 12));
+
+    auto tools = header.removeFromRight(230);
+    audioSettingsButton.setBounds(tools.removeFromRight(40).withSizeKeepingCentre(40, 38));
+    tools.removeFromRight(6);
+    midiButton.setBounds(tools.removeFromRight(84).withSizeKeepingCentre(84, 38));
+    tools.removeFromRight(6);
+    tunerButton.setBounds(tools.removeFromRight(92).withSizeKeepingCentre(92, 38));
+
+    constexpr int abWidth = 2 * 36, abGap = 10;
+    auto centre = header.withSizeKeepingCentre(PresetBar::preferredWidth + abGap + abWidth, 42);
+    presetBar.setBounds(centre.removeFromLeft(PresetBar::preferredWidth));
+    centre.removeFromLeft(abGap);
+    snapshotButtons[0].setBounds(centre.removeFromLeft(36));
+    snapshotButtons[1].setBounds(centre.removeFromLeft(36));
+
+    area.removeFromTop(12);
+
+    // Тюнер закрывает всё ниже шапки
     tuner.setBounds(area);
 
-    auto presetRow = area.removeFromTop(28);
-    snapshotButtons[1].setBounds(presetRow.removeFromRight(34));
-    presetRow.removeFromRight(4);
-    snapshotButtons[0].setBounds(presetRow.removeFromRight(34));
-    presetRow.removeFromRight(12);
-    presetBar.setBounds(presetRow);
+    // Сцена: IN | REC | LOOP | DRUMS | OUT
+    stage.setBounds(area.removeFromTop(86));
+
+    auto placeKnob = [this](juce::Rectangle<int> slot, juce::Label& label, juce::Slider& knob)
+    {
+        slot = slot.translated(stage.getX(), stage.getY()).reduced(6, 6);
+        label.setBounds(slot.removeFromTop(12));
+        knob.setBounds(slot);
+    };
+
+    placeKnob(stage.getInputSlot(),  inputLabel,  inputKnob);
+    placeKnob(stage.getOutputSlot(), outputLabel, outputKnob);
+
     area.removeFromTop(8);
 
-    area.removeFromTop(4);
+    // Индикаторы IN / OUT и Master
+    auto meterRow = area.removeFromTop(22);
+    masterButton.setBounds(meterRow.removeFromRight(190));
+    meterRow.removeFromRight(12);
+    inputMeter.setBounds(meterRow.removeFromLeft((meterRow.getWidth() - 8) / 2));
+    meterRow.removeFromLeft(8);
+    outputMeter.setBounds(meterRow);
 
-    // Input | индикаторы | Output
-    auto gainRow = area.removeFromTop(100);
-
-    auto inputArea = gainRow.removeFromLeft(90);
-    inputLabel.setBounds(inputArea.removeFromTop(20));
-    inputKnob.setBounds(inputArea);
-
-    auto outputArea = gainRow.removeFromRight(90);
-    outputLabel.setBounds(outputArea.removeFromTop(20));
-    outputKnob.setBounds(outputArea);
-
-    auto meters = gainRow.reduced(12, 0).withSizeKeepingCentre(gainRow.getWidth() - 24, 84);
-    inputMeter.setBounds(meters.removeFromTop(22));
-    meters.removeFromTop(6);
-    outputMeter.setBounds(meters.removeFromTop(22));
-    meters.removeFromTop(8);
-    masterButton.setBounds(meters.removeFromTop(26).removeFromRight(200));
-
-    area.removeFromTop(10);
+    area.removeFromTop(12);
 
     // Основная цепочка
     auto mainTitle = area.removeFromTop(18);

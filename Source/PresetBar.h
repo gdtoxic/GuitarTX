@@ -3,12 +3,14 @@
 #include <JuceHeader.h>
 #include "PresetManager.h"
 #include "PresetBrowser.h"
+#include "HeaderWidgets.h"
 
-// Панель пресетов:  [<] [ Имя пресета * ] [>]  [Browse] [Save] [Save As] [Delete]
+// Панель пресетов фиксированной ширины (preferredWidth):  [‹] [КАТЕГОРИЯ  Имя  * ▾] [›] [Browse] [Save] [▾]
 //  - клик по имени открывает быстрый список (избранное / factory / user по папкам);
 //  - Browse - окно браузера: поиск, теги, избранное, папки, импорт/экспорт;
 //  - "*" - цепочка изменена относительно пресета;
-//  - Save перезаписывает текущий user-пресет, для factory работает как Save As.
+//  - Save перезаписывает текущий user-пресет, для factory работает как Save As;
+//  - ▾ - Save As / Delete.
 class PresetBar : public juce::Component,
                   private juce::Timer
 {
@@ -30,11 +32,14 @@ public:
 
     void resized() override;
 
+    static constexpr int preferredWidth = 34 + 4 + 320 + 4 + 34 + 10 + 44 + 4 + 44 + 2 + 26;
+
 private:
     void timerCallback() override;
 
     void showPresetMenu();
     void showBrowser();
+    void showSaveMenu();
 
     void save();
     void saveAs();
@@ -45,13 +50,14 @@ private:
 
     PresetManager& manager;
 
-    juce::TextButton prevButton   { "<" };
-    juce::TextButton nameButton;
-    juce::TextButton nextButton   { ">" };
-    juce::TextButton browseButton { "Browse" };
-    juce::TextButton saveButton   { "Save" };
-    juce::TextButton saveAsButton { "Save As" };
-    juce::TextButton deleteButton { "Delete" };
+    class NameDisplay;
+
+    IconButton prevButton { "Previous preset", Icons::Id::previous };
+    std::unique_ptr<NameDisplay> nameButton;
+    IconButton nextButton { "Next preset", Icons::Id::next };
+    IconButton browseButton { "Preset browser", Icons::Id::browse };
+    IconButton saveButton   { "Save", Icons::Id::save };
+    IconButton moreButton   { "More", Icons::Id::more, IconButton::Style::flat };
 
     std::unique_ptr<PresetBrowser> browser;
     std::unique_ptr<juce::AlertWindow> nameDialog;

@@ -99,7 +99,7 @@ if(GUITARTX_BUILD_TESTS)
 
     # Всё, кроме окна приложения и UI-компонентов
     set(GUITARTX_TEST_SOURCES ${GUITARTX_SOURCES})
-    list(FILTER GUITARTX_TEST_SOURCES EXCLUDE REGEX "(Main|MainComponent|TunerComponent|EffectPanel|RackComponent|PresetBar|PresetBrowser|MidiWindow|DrumWindow|LooperWindow)\\.cpp$")
+    list(FILTER GUITARTX_TEST_SOURCES EXCLUDE REGEX "(Main|MainComponent|TunerComponent|EffectPanel|RackComponent|PresetBar|PresetBrowser|MidiWindow|DrumWindow|LooperWindow|HeaderWidgets|Icons)\\.cpp$")
 
     target_sources(GuitarTXTests PRIVATE
         ${GUITARTX_TEST_SOURCES}

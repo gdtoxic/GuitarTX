@@ -105,6 +105,10 @@
       <FILE id="loopPC" name="LooperProcessor.cpp" compile="1" resource="0" file="Source/LooperProcessor.cpp"/>
       <FILE id="loopWH" name="LooperWindow.h" compile="0" resource="0" file="Source/LooperWindow.h"/>
       <FILE id="loopWC" name="LooperWindow.cpp" compile="1" resource="0" file="Source/LooperWindow.cpp"/>
+      <FILE id="iconsH" name="Icons.h" compile="0" resource="0" file="Source/Icons.h"/>
+      <FILE id="iconsC" name="Icons.cpp" compile="1" resource="0" file="Source/Icons.cpp"/>
+      <FILE id="hdrwgH" name="HeaderWidgets.h" compile="0" resource="0" file="Source/HeaderWidgets.h"/>
+      <FILE id="hdrwgC" name="HeaderWidgets.cpp" compile="1" resource="0" file="Source/HeaderWidgets.cpp"/>
       <FILE id="gtempH" name="GlobalTempo.h" compile="0" resource="0" file="Source/GlobalTempo.h"/>
     </GROUP>
     <GROUP id="{6D1B2F0A-9C3E-4E55-A1B7-3F2C9E8D4A10}" name="Resources">

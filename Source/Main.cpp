@@ -41,7 +41,7 @@ public:
         {
             setUsingNativeTitleBar (true);
             setContentOwned (new MainComponent(), true);
-            setResizable (true, true);
+            setResizable (false, false);   // раскладка рассчитана на фиксированный размер
             centreWithSize (getWidth(), getHeight());
             setVisible (true);
         }

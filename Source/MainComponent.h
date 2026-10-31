@@ -17,6 +17,7 @@
 #include "DrumWindow.h"
 #include "DrumAssistant.h"
 #include "LooperWindow.h"
+#include "HeaderWidgets.h"
 
 //==============================================================================
 class MainComponent : public juce::Component,
@@ -77,6 +78,9 @@ private:
     void showLooperWindow();
     void updateLooperButton();
 
+    // Полоса сцены (запись / лупер / барабаны) и шапка
+    void setupHeader();
+
     // Snapshots A/B
     void setupSnapshots();
     void selectSnapshot(int index);
@@ -99,17 +103,13 @@ private:
     AppSettings settings;
     AudioEngine audioEngine;
 
-    juce::Label titleLabel;
+    AppLogo logo;
     juce::Label hintLabel;
     juce::Label mainLaneLabel, parallelLaneLabel;
-    juce::TextButton audioSettingsButton { "Audio Settings" };
-    juce::TextButton tunerButton { "TUNER" };
-    juce::TextButton midiButton  { "MIDI" };
-    juce::TextButton recordButton { "REC" };
-    juce::TextButton recordMenuButton;
-    juce::TextButton drumsButton { "DRUMS" };
-    juce::TextButton drumsPlayButton;
-    juce::TextButton looperButton { "LOOP" };
+    IconButton audioSettingsButton { "Audio settings: interface, sample rate, buffer", Icons::Id::settings };
+    IconButton tunerButton { "Tuner (Esc to close)", Icons::Id::tuner };
+    IconButton midiButton  { "MIDI: pedals, footswitches, program change", Icons::Id::midi };
+    StageStrip stage;
     std::unique_ptr<juce::FileChooser> reampChooser;
 
     // Кнопка с отдельной реакцией на правый клик (меню вместо нажатия)
@@ -173,6 +173,9 @@ private:
     std::unique_ptr<juce::XmlElement> lastSavedRack, lastSavedSession, lastSavedDrums;
     int saveTicks = 0;
     bool changingSelection = false;
+
+    static constexpr int windowWidth = 1100, windowHeight = 780;
+    int headerBottom = 0;
 
     float inputDisplay  = 0.0f;
     float outputDisplay = 0.0f;

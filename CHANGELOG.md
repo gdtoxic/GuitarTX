@@ -27,6 +27,14 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
   again with **File...** (opens this folder), or send a take that was analyzed wrong.
 
 ### Changed
+- **New main window header** (the window has a fixed size now, 1100×780; the title no longer gets cut off and the
+  preset field no longer stretches):
+  - top row: logo and version, presets in the centre — ‹ › and a fixed-width name with the style / folder tag
+    and the "modified" mark; icon buttons for Browse and Save, Save As / Delete in the ▾ menu, A/B as one switch;
+    on the right Tuner, MIDI and Audio settings;
+  - **stage strip** under it: Input knob | **REC** (time, DI / Wet, menu) | **LOOP** (state, bar progress,
+    Undo / Redo; click — looper window) | **DRUMS** (play / stop, tempo, pattern; click — drum window) | Output knob;
+  - vector icons, sharp at any screen scale.
 - **LISTEN with a real guitar**: note detection is tuned on a Karplus-Strong guitar model (power chords, palm
   mutes, ringing open chords, hammer-ons / pull-offs, slides, ±15 ms human timing, noise and hum):
   - palm mutes right after an accented chord are no longer lost (local median threshold instead of the mean);

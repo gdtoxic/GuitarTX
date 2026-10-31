@@ -187,6 +187,8 @@
     <ClCompile Include="..\..\Source\DrumAssistant.cpp"/>
     <ClCompile Include="..\..\Source\LooperProcessor.cpp"/>
     <ClCompile Include="..\..\Source\LooperWindow.cpp"/>
+    <ClCompile Include="..\..\Source\Icons.cpp"/>
+    <ClCompile Include="..\..\Source\HeaderWidgets.cpp"/>
     <ClCompile Include="C:\Program Files\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.cpp">
       <ExcludedFromBuild>true</ExcludedFromBuild>
     </ClCompile>
@@ -3285,6 +3287,8 @@
     <ClInclude Include="..\..\Source\DrumAssistant.h"/>
     <ClInclude Include="..\..\Source\LooperProcessor.h"/>
     <ClInclude Include="..\..\Source\LooperWindow.h"/>
+    <ClInclude Include="..\..\Source\Icons.h"/>
+    <ClInclude Include="..\..\Source\HeaderWidgets.h"/>
     <ClInclude Include="..\..\Source\GlobalTempo.h"/>
     <ClInclude Include="C:\Program Files\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.h"/>
     <ClInclude Include="C:\Program Files\JUCE\modules\juce_audio_basics\buffers\juce_AudioChannelSet.h"/>

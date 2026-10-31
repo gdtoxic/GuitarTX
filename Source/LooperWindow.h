@@ -35,6 +35,9 @@ public:
 
     void closeButtonPressed() override { setVisible(false); }
 
+    // Цвет состояния лупера (окно, полоса сцены)
+    static juce::Colour stateColour(LooperProcessor::State state);
+
 private:
     class Content;
     Content* content = nullptr;

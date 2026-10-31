@@ -1,28 +1,94 @@
 #include "PresetBar.h"
+#include "GuitarTXLookAndFeel.h"
+
+//==============================================================================
+// Имя пресета: метка категории / папки, имя, "*" при изменениях, стрелка меню
+class PresetBar::NameDisplay : public juce::Button
+{
+public:
+    NameDisplay() : juce::Button("Preset") {}
+
+    void set(const juce::String& newTag, const juce::String& newName, bool newModified, bool newEmpty)
+    {
+        if (newTag == tag && newName == name && newModified == modified && newEmpty == empty)
+            return;
+
+        tag = newTag;
+        name = newName;
+        modified = newModified;
+        empty = newEmpty;
+        repaint();
+    }
+
+    void paintButton(juce::Graphics& g, bool highlighted, bool down) override
+    {
+        auto area = getLocalBounds().toFloat().reduced(0.5f);
+
+        g.setColour(GuitarTXLookAndFeel::textBox.brighter(down ? 0.12f : highlighted ? 0.06f : 0.0f));
+        g.fillRoundedRectangle(area, 6.0f);
+        g.setColour(juce::Colour(0xff4f5e60));
+        g.drawRoundedRectangle(area, 6.0f, 1.0f);
+
+        area = area.reduced(10.0f, 0.0f);
+
+        // Стрелка меню справа
+        auto arrow = area.removeFromRight(14.0f);
+        Icons::draw(g, Icons::Id::more, arrow.withSizeKeepingCentre(14.0f, 14.0f), juce::Colour(0xff9aa0a6), 1.6f);
+        area.removeFromRight(6.0f);
+
+        if (tag.isNotEmpty())
+        {
+            const juce::Font tagFont(juce::FontOptions(10.5f, juce::Font::bold));
+            const float width = juce::GlyphArrangement::getStringWidth(tagFont, tag) + 12.0f;
+            const auto chip = area.removeFromLeft(juce::jmin(width, 110.0f)).withSizeKeepingCentre(juce::jmin(width, 110.0f), 18.0f);
+
+            g.setColour(GuitarTXLookAndFeel::accent);
+            g.fillRoundedRectangle(chip, 3.0f);
+            g.setColour(GuitarTXLookAndFeel::background);
+            g.setFont(tagFont);
+            g.drawText(tag, chip, juce::Justification::centred, true);
+            area.removeFromLeft(10.0f);
+        }
+
+        if (modified)
+        {
+            g.setColour(GuitarTXLookAndFeel::accent);
+            g.setFont(juce::FontOptions(17.0f, juce::Font::bold));
+            g.drawText("*", area.removeFromRight(12.0f), juce::Justification::centred, false);
+        }
+
+        g.setColour(empty ? juce::Colour(0xff9aa0a6) : juce::Colour(0xffeeeeee));
+        g.setFont(juce::FontOptions(16.0f, juce::Font::bold));
+        g.drawFittedText(name, area.toNearestInt(), juce::Justification::centredLeft, 1, 0.8f);
+    }
+
+private:
+    juce::String tag, name;
+    bool modified = false, empty = true;
+};
 
 //==============================================================================
 PresetBar::PresetBar(PresetManager& managerToUse)
-    : manager(managerToUse)
+    : manager(managerToUse), nameButton(std::make_unique<NameDisplay>())
 {
     prevButton.setTooltip("Previous preset");
     nextButton.setTooltip("Next preset");
-    nameButton.setTooltip("Choose preset");
+    nameButton->setTooltip("Choose preset (favourites, factory by style, your folders)");
     browseButton.setTooltip("Preset browser: search, tags, favourites, folders, import / export");
     saveButton.setTooltip("Save changes to the current preset");
-    saveAsButton.setTooltip("Save as a new preset");
-    deleteButton.setTooltip("Delete the current user preset");
+    moreButton.setTooltip("Save As / Delete");
 
     prevButton.onClick   = [this] { step(-1); };
     nextButton.onClick   = [this] { step(+1); };
-    nameButton.onClick   = [this] { showPresetMenu(); };
+    nameButton->onClick  = [this] { showPresetMenu(); };
     browseButton.onClick = [this] { showBrowser(); };
     saveButton.onClick   = [this] { save(); };
-    saveAsButton.onClick = [this] { saveAs(); };
-    deleteButton.onClick = [this] { deleteCurrent(); };
+    moreButton.onClick   = [this] { showSaveMenu(); };
 
-    for (auto* button : { &prevButton, &nameButton, &nextButton, &browseButton,
-                          &saveButton, &saveAsButton, &deleteButton })
-        addAndMakeVisible(button);
+    for (juce::Component* c : { (juce::Component*) &prevButton, (juce::Component*) nameButton.get(),
+                                (juce::Component*) &nextButton, (juce::Component*) &browseButton,
+                                (juce::Component*) &saveButton, (juce::Component*) &moreButton })
+        addAndMakeVisible(c);
 
     updateDisplay();
     startTimerHz(4);
@@ -42,20 +108,25 @@ void PresetBar::updateDisplay()
 {
     lastModified = manager.isModified();
 
-    juce::String text = manager.hasCurrentPreset() ? manager.getCurrentName()
-                                                   : juce::String("No preset");
+    // Метка: стиль factory-пресета, папка или USER
+    juce::String tag;
 
-    if (manager.isCurrentFactory())
-        text += "  [Factory]";
+    if (manager.hasCurrentPreset())
+    {
+        if (manager.isCurrentFactory())
+        {
+            for (const auto& preset : manager.getPresets())
+                if (preset.isFactory && manager.isCurrent(preset))
+                    tag = preset.category;
+        }
+        else
+        {
+            tag = manager.getCurrentFolder().isNotEmpty() ? manager.getCurrentFolder() : juce::String("User");
+        }
+    }
 
-    if (lastModified)
-        text += "  *";
-
-    if (! manager.isCurrentFactory() && manager.getCurrentFolder().isNotEmpty())
-        text = manager.getCurrentFolder() + " / " + text;
-
-    nameButton.setButtonText(text);
-    deleteButton.setEnabled(manager.hasCurrentPreset() && ! manager.isCurrentFactory());
+    nameButton->set(tag.toUpperCase(), manager.hasCurrentPreset() ? manager.getCurrentName() : juce::String("No preset"),
+                    lastModified, ! manager.hasCurrentPreset());
 
     if (browser != nullptr && browser->isVisible())
         browser->refresh();
@@ -153,7 +224,7 @@ void PresetBar::showPresetMenu()
 
     juce::Component::SafePointer<PresetBar> safeThis(this);
 
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&nameButton),
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(nameButton.get()),
                        [safeThis, presets](int result)
                        {
                            if (safeThis == nullptr || result == 0)
@@ -367,20 +438,42 @@ void PresetBar::deleteCurrent()
 }
 
 //==============================================================================
+void PresetBar::showSaveMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem(1, "Save As...");
+    menu.addItem(2, "Delete", manager.hasCurrentPreset() && ! manager.isCurrentFactory());
+    menu.addSeparator();
+    menu.addItem(3, "Browse presets...");
+
+    juce::Component::SafePointer<PresetBar> safeThis(this);
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&moreButton),
+                       [safeThis](int result)
+                       {
+                           if (safeThis == nullptr)
+                               return;
+
+                           if (result == 1)      safeThis->saveAs();
+                           else if (result == 2) safeThis->deleteCurrent();
+                           else if (result == 3) safeThis->showBrowser();
+                       });
+}
+
 void PresetBar::resized()
 {
-    auto area = getLocalBounds();
+    // Ширина фиксированная: длинное имя ужимается, а не растягивает панель
+    auto area = getLocalBounds().withSizeKeepingCentre(juce::jmin(getWidth(), preferredWidth), getHeight());
 
-    deleteButton.setBounds(area.removeFromRight(64));
-    area.removeFromRight(6);
-    saveAsButton.setBounds(area.removeFromRight(70));
-    area.removeFromRight(6);
-    saveButton.setBounds(area.removeFromRight(56));
-    area.removeFromRight(6);
-    browseButton.setBounds(area.removeFromRight(66));
-    area.removeFromRight(12);
-
-    prevButton.setBounds(area.removeFromLeft(28));
-    nextButton.setBounds(area.removeFromRight(28));
-    nameButton.setBounds(area.reduced(4, 0));
+    prevButton.setBounds(area.removeFromLeft(34));
+    area.removeFromLeft(4);
+    nameButton->setBounds(area.removeFromLeft(320));
+    area.removeFromLeft(4);
+    nextButton.setBounds(area.removeFromLeft(34));
+    area.removeFromLeft(10);
+    browseButton.setBounds(area.removeFromLeft(44));
+    area.removeFromLeft(4);
+    saveButton.setBounds(area.removeFromLeft(44));
+    area.removeFromLeft(2);
+    moreButton.setBounds(area.removeFromLeft(26));
 }

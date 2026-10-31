@@ -6,23 +6,6 @@ namespace
     constexpr double doublePressMs = 400.0;
     constexpr double holdClearMs   = 2000.0;
 
-    juce::Colour stateColour(LooperProcessor::State state)
-    {
-        using S = LooperProcessor::State;
-
-        switch (state)
-        {
-            case S::recording:   return juce::Colour::fromRGB(210, 40, 40);
-            case S::armed:       return juce::Colour::fromRGB(170, 70, 40);
-            case S::playing:     return juce::Colour::fromRGB(40, 170, 80);
-            case S::overdubbing: return GuitarTXLookAndFeel::accent;
-            case S::stopped:
-            case S::empty:       return GuitarTXLookAndFeel::track;
-        }
-
-        return GuitarTXLookAndFeel::track;
-    }
-
     // Что сделает главная кнопка
     juce::String nextAction(LooperProcessor::State state)
     {
@@ -40,6 +23,24 @@ namespace
 
         return {};
     }
+}
+
+//==============================================================================
+juce::Colour LooperWindow::stateColour(LooperProcessor::State state)
+{
+    using S = LooperProcessor::State;
+
+    switch (state)
+    {
+        case S::recording:   return juce::Colour::fromRGB(210, 40, 40);
+        case S::armed:       return juce::Colour::fromRGB(170, 70, 40);
+        case S::playing:     return juce::Colour::fromRGB(40, 170, 80);
+        case S::overdubbing: return GuitarTXLookAndFeel::accent;
+        case S::stopped:
+        case S::empty:       return GuitarTXLookAndFeel::track;
+    }
+
+    return GuitarTXLookAndFeel::track;
 }
 
 //==============================================================================
@@ -119,7 +120,7 @@ public:
 
         if (running || state == LooperProcessor::State::stopped)
         {
-            g.setColour(stateColour(state).withAlpha(0.8f));
+            g.setColour(LooperWindow::stateColour(state).withAlpha(0.8f));
             g.fillRoundedRectangle(r.withWidth(r.getWidth() * (float) position), 4.0f);
         }
 
@@ -253,7 +254,7 @@ private:
         const auto state = looper.getState();
 
         mainButton.setButtonText(nextAction(state));
-        mainButton.setColour(juce::TextButton::buttonColourId, stateColour(state));
+        mainButton.setColour(juce::TextButton::buttonColourId, LooperWindow::stateColour(state));
 
         const bool hasLoop = looper.getLengthSeconds() > 0.0 && state != LooperProcessor::State::empty;
         stopButton.setEnabled(hasLoop || state == LooperProcessor::State::armed);
