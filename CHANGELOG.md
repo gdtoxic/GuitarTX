@@ -24,6 +24,17 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
   Phaser Doom, Jet Flanger Riff, Studio Rhythm (mic), Tremolo Dream.
 
 ### Changed
+- **Factory presets upgraded** with the new pedals where it fits the style:
+  - leads (Doom Lead, Doom Hall Lead, Modern Lead, Solo Ping-Pong Hall, Alt Lead Delay, Arena Lead, Whammy Octave
+    Lead): a compressor before the drive for sustain and even notes, plus a touch of power amp (Power / Sag);
+    **Arena Lead B** adds a harmony third (E minor);
+  - rhythms (Doom Rhythm, Tight Chug, Thrash Rhythm, Classic Heavy, Crunch Rhythm, Grunge Wall, Modern Metal A/B,
+    BFG Rhythm / Lead): power amp section (Power, Sag, Resonance) for a tighter, springier low end;
+  - cleans (Clean Verse, Clean Arpeggio, Dotted Eighth, Clean Compressed, Clean to Crush): a compressor; Clean Verse
+    and Clean Arpeggio also get a chorus;
+  - Cold Wave Clean: a real chorus instead of the pitch-LFO trick; Shoegaze Wash and Blackgaze: chorus;
+  - Stuck Wah Lead: a real Wah pedal instead of the EQ peak;
+  - Full Rig: Compressor, Wah, Harmonizer and Modulation added (off), as a starting point.
 - The settings button opens a menu: Audio / MIDI device and Interface scale.
 - About: shorter, version and GitHub link only.
 
