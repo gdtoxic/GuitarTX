@@ -34,8 +34,11 @@ public:
     void resized() override;
 
 private:
-    // Окно настроек звука
+    // Окно настроек звука; меню кнопки настроек (звук, масштаб интерфейса)
     void showAudioSettings();
+    void showSettingsMenu();
+    void applyInterfaceScale(float scale);
+    void updateCpuLabel();
     void updateStatusLabel();
     void showDeviceError(const juce::String& error);
     juce::String getCurrentDeviceName();
@@ -140,7 +143,9 @@ private:
     };
 
     std::array<RightClickButton, 2> snapshotButtons;
-    juce::Label statusLabel;
+    juce::Label statusLabel, cpuLabel;
+    float cpuDisplay = 0.0f, interfaceScale = 1.0f;
+    int cpuTicks = 0;
 
     // Входной/выходной gain и индикаторы
     juce::Label  inputLabel, outputLabel;

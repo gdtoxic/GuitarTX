@@ -30,6 +30,10 @@
 #include "ListenProcessor.h"
 #include "LooperProcessor.h"
 #include "GlobalTempo.h"
+#include "CompressorProcessor.h"
+#include "ModulationProcessor.h"
+#include "WahProcessor.h"
+#include "HarmonizerProcessor.h"
 #include <cstdio>
 #include <cstdlib>
 
@@ -662,7 +666,7 @@ static void testPresets()
     }
 
     std::printf("Presets: %d factory presets loaded, %d with snapshot B\n", factory, withSnapshots);
-    CHECK(factory >= 82, "expected at least 82 factory presets, got %d", factory);
+    CHECK(factory >= 90, "expected at least 90 factory presets, got %d", factory);
 }
 
 // LFO: Square с размахом -12 - половину цикла исходная высота, половину - октава вниз
@@ -2444,6 +2448,239 @@ static void testAmpModels()
     }
 }
 
+//==============================================================================
+// Новые педали v0.5: компрессор, модуляция, wah, гармонайзер
+static std::vector<float> runEffect(EffectBase& effect, std::vector<float> input,
+                                    std::initializer_list<std::pair<const char*, float>> parameters)
+{
+    const double sr = 48000.0;
+    const int block = 256;
+    effect.setPlayConfigDetails(2, 2, sr, block);
+
+    for (const auto& [id, value] : parameters)
+        setParam(effect, id, value);
+
+    effect.prepareToPlay(sr, block);
+    juce::AudioBuffer<float> buf(2, block);
+    juce::MidiBuffer midi;
+
+    for (size_t i = 0; i + (size_t) block <= input.size(); i += (size_t) block)
+    {
+        for (int k = 0; k < block; ++k)
+            for (int ch = 0; ch < 2; ++ch)
+                buf.setSample(ch, k, input[i + (size_t) k]);
+
+        effect.processBlock(buf, midi);
+
+        for (int k = 0; k < block; ++k)
+            input[i + (size_t) k] = buf.getSample(0, k);
+    }
+
+    return input;
+}
+
+static double rmsDbOf(const std::vector<float>& x, size_t from, size_t to)
+{
+    double sum = 0.0;
+    for (size_t i = from; i < to; ++i) sum += (double) x[i] * x[i];
+    return 10.0 * std::log10(sum / (double) juce::jmax((size_t) 1, to - from) + 1.0e-20);
+}
+
+static std::vector<float> sineSignal(double hz, double seconds, float amplitude)
+{
+    std::vector<float> x((size_t) (seconds * 48000.0) / 256 * 256);
+    for (size_t i = 0; i < x.size(); ++i)
+        x[i] = amplitude * (float) std::sin(2.0 * juce::MathConstants<double>::pi * hz * (double) i / 48000.0);
+    return x;
+}
+
+static void testNewPedals()
+{
+    const double sr = 48000.0;
+
+    // 1. Компрессор: разница громких и тихих фраз уменьшается
+    {
+        auto input = sineSignal(220.0, 2.0, 1.0f);
+        for (size_t i = 0; i < input.size(); ++i)
+            input[i] *= (i / 24000) % 2 == 0 ? 0.5f : 0.05f;   // 0.5 с громко / 0.5 с тихо
+
+        CompressorProcessor comp;
+        const auto out = runEffect(comp, input, { { "threshold", -30.0f }, { "ratio", 8.0f }, { "attack", 2.0f },
+                                                  { "release", 60.0f }, { "makeup", 0.0f } });
+        const double inDiff  = rmsDbOf(input, 54000, 72000) - rmsDbOf(input, 30000, 48000);
+        const double outDiff = rmsDbOf(out, 54000, 72000) - rmsDbOf(out, 30000, 48000);
+        std::printf("Compressor: loud/quiet %.1f dB -> %.1f dB, status \"%s\"\n", inDiff, outDiff, comp.getStatusText().toRawUTF8());
+        CHECK(outDiff < inDiff - 8.0 && outDiff > 2.0, "compressor: dynamics %.1f -> %.1f dB", inDiff, outDiff);
+    }
+
+    // 2. Модуляция: Chorus / Flanger / Phaser меняют звук без скачка громкости, Tremolo качает громкость
+    {
+        juce::Random random(5);
+        std::vector<float> noise((size_t) sr);
+        for (auto& v : noise) v = 0.2f * (random.nextFloat() * 2.0f - 1.0f);
+
+        for (int mode = 0; mode < 3; ++mode)
+        {
+            ModulationProcessor mod;
+            const auto out = runEffect(mod, noise, { { "mode", (float) mode }, { "depth", 70.0f }, { "feedback", 40.0f },
+                                                     { "mix", 100.0f }, { "rate", 1.0f } });
+            double diff = 0.0;
+            bool finite = true;
+            for (size_t i = 0; i < out.size(); ++i) { diff += std::abs(out[i] - noise[i]); finite = finite && std::isfinite(out[i]); }
+            const double db = rmsDbOf(out, 4800, out.size()) - rmsDbOf(noise, 4800, noise.size());
+            std::printf("Modulation %s: level %+.1f dB\n", mod.getStatusText().toRawUTF8(), db);
+            CHECK(finite && diff / (double) out.size() > 0.01 && std::abs(db) < 4.0, "modulation mode %d", mode);
+        }
+
+        ModulationProcessor tremolo;
+        const auto out = runEffect(tremolo, sineSignal(440.0, 1.0, 0.5f), { { "mode", 3.0f }, { "depth", 100.0f }, { "rate", 4.0f } });
+        double loud = -200.0, quiet = 200.0;
+        for (size_t w = 4800; w + 480 < out.size(); w += 480)
+        {
+            const double db = rmsDbOf(out, w, w + 480);
+            loud = std::max(loud, db); quiet = std::min(quiet, db);
+        }
+        std::printf("Tremolo: swing %.1f dB\n", loud - quiet);
+        CHECK(loud - quiet > 15.0, "tremolo depth");
+    }
+
+    // 3. Wah: пятка пропускает низ, носок - верх; Auto открывается от громкой игры
+    {
+        auto through = [](float position, double hz)
+        {
+            WahProcessor wah;
+            const auto in = sineSignal(hz, 0.5, 0.3f);
+            const auto out = runEffect(wah, in, { { "mode", 0.0f }, { "position", position }, { "mix", 100.0f } });
+            return rmsDbOf(out, 12000, out.size()) - rmsDbOf(in, 12000, in.size());
+        };
+
+        const double heelLow = through(0.0f, 400.0), heelHigh = through(0.0f, 2000.0);
+        const double toeLow = through(100.0f, 400.0), toeHigh = through(100.0f, 2000.0);
+        std::printf("Wah: heel 400 Hz %+.1f / 2 kHz %+.1f dB, toe 400 Hz %+.1f / 2 kHz %+.1f dB\n", heelLow, heelHigh, toeLow, toeHigh);
+        CHECK(heelLow > heelHigh + 6.0 && toeHigh > toeLow + 6.0, "wah sweep");
+
+        WahProcessor loudWah, quietWah;
+        runEffect(loudWah, sineSignal(300.0, 0.5, 0.5f), { { "mode", 1.0f }, { "sens", -40.0f } });
+        runEffect(quietWah, sineSignal(300.0, 0.5, 0.01f), { { "mode", 1.0f }, { "sens", -40.0f } });
+        CHECK(loudWah.getCurrentPosition() > 0.7f && quietWah.getCurrentPosition() < 0.2f,
+              "auto wah: loud %.2f quiet %.2f", loudWah.getCurrentPosition(), quietWah.getCurrentPosition());
+    }
+
+    // 4. Гармонайзер: ступени лада и реальный сдвиг
+    {
+        using H = HarmonizerProcessor;
+        CHECK(H::diatonicShift(64, 4, 1, 2) == 3 && H::diatonicShift(66, 4, 1, 2) == 3 && H::diatonicShift(67, 4, 1, 2) == 4,
+              "harmonizer: thirds in E minor");
+        CHECK(H::diatonicShift(60, 0, 0, 2) == 4 && H::diatonicShift(62, 0, 0, 2) == 3 && H::diatonicShift(71, 0, 0, 4) == 6,
+              "harmonizer: C major third / fifth");
+        CHECK(H::diatonicShift(64, 4, 1, 7) == 12 && H::diatonicShift(64, 4, 1, -2) == -4 && H::diatonicShift(65, 4, 1, 2) == 2,
+              "harmonizer: octave, third below, note outside the scale");
+
+        // A3 (220 Гц) в ми миноре: терция вверх - C4 (261.6 Гц)
+        std::vector<float> input((size_t) (1.5 * sr) / 256 * 256);
+        for (size_t i = 0; i < input.size(); ++i)
+        {
+            const double t = (double) i / sr;
+            for (int h = 1; h <= 4; ++h)
+                input[i] += (float) (0.3 / h * std::sin(2.0 * juce::MathConstants<double>::pi * 220.0 * h * t));
+        }
+
+        HarmonizerProcessor harmonizer;
+        const auto out = runEffect(harmonizer, input, { { "key", 4.0f }, { "scale", 1.0f }, { "voice1", 6.0f },
+                                                        { "voice2", 0.0f }, { "mix", 100.0f } });
+        std::vector<float> harmony(out.size());
+        for (size_t i = 0; i < out.size(); ++i) harmony[i] = out[i] - input[i];
+
+        PitchDetector detector;
+        detector.prepare(sr);
+        detector.push(harmony.data() + harmony.size() - 8192, 8192);
+        const float hz = detector.detect().frequency;
+        std::printf("Harmonizer: A3 -> %.1f Hz (expected 261.6), detected note %d\n", hz, harmonizer.getDetectedNote());
+        CHECK(std::abs(1200.0f * std::log2(hz / 261.63f)) < 25.0f && harmonizer.getDetectedNote() == 57, "harmonizer third up");
+    }
+
+    // 5. Кабинет: позиция микрофона темнее к краю, расстояние убирает низ; IR B смешивается с моделью
+    {
+        auto cabinetGain = [sr](std::initializer_list<std::pair<const char*, float>> parameters, double hz)
+        {
+            CabinetProcessor cab;
+            const auto in = sineSignal(hz, 0.5, 0.2f);
+            const auto out = runEffect(cab, in, parameters);
+            juce::ignoreUnused(sr);
+            return rmsDbOf(out, 12000, out.size()) - rmsDbOf(in, 12000, in.size());
+        };
+
+        const double centre6k = cabinetGain({ { "model", 1.0f } }, 4000.0);
+        const double edge6k   = cabinetGain({ { "model", 1.0f }, { "position", 100.0f } }, 4000.0);
+        const double close100 = cabinetGain({ { "model", 1.0f } }, 110.0);
+        const double far100   = cabinetGain({ { "model", 1.0f }, { "distance", 100.0f } }, 110.0);
+        std::printf("Cabinet mic: 4 kHz centre %+.1f / edge %+.1f dB, 110 Hz close %+.1f / far %+.1f dB\n",
+                    centre6k, edge6k, close100, far100);
+        CHECK(edge6k < centre6k - 5.0 && far100 < close100 - 3.0, "cabinet mic position / distance");
+
+        // IR B: короткий тёмный отклик (экспонента), смешивается со встроенной моделью
+        const auto irFile = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("gtx_ir_b.wav");
+        {
+            irFile.deleteFile();
+            juce::AudioBuffer<float> ir(1, 2048);
+            for (int i = 0; i < ir.getNumSamples(); ++i) ir.setSample(0, i, std::exp(-(float) i / 40.0f));
+            juce::WavAudioFormat wav;
+            std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream>(irFile);
+            auto writer = wav.createWriterFor(stream, juce::AudioFormatWriterOptions {}.withSampleRate(sr).withNumChannels(1).withBitsPerSample(24));
+            writer->writeFromAudioSampleBuffer(ir, 0, ir.getNumSamples());
+        }
+
+        auto blended = [&](float mix)
+        {
+            CabinetProcessor cab;
+            cab.loadImpulseResponse(irFile, CabinetProcessor::slotB);
+            auto in = sineSignal(4000.0, 1.0, 0.2f);
+
+            // Свёртка готовится в фоне: даём ей время, затем меряем
+            cab.setPlayConfigDetails(2, 2, sr, 256);
+            setParam(cab, "model", 1.0f);
+            setParam(cab, "mix", mix);
+            cab.prepareToPlay(sr, 256);
+            juce::AudioBuffer<float> warm(2, 256); juce::MidiBuffer midi;
+            for (int k = 0; k < 40; ++k) { warm.clear(); cab.processBlock(warm, midi); juce::Thread::sleep(5); }
+
+            const auto out = runEffect(cab, in, { { "model", 1.0f }, { "mix", mix } });
+            return std::make_pair(rmsDbOf(out, 24000, out.size()) - rmsDbOf(in, 24000, in.size()), cab.getStatusText());
+        };
+
+        const auto [modelOnly, statusA] = blended(0.0f);
+        const auto [irOnly, statusB] = blended(100.0f);
+        std::printf("Cabinet IR B at 4 kHz: mix 0 %+.1f dB, mix 100 %+.1f dB, status \"%s\"\n", modelOnly, irOnly, statusB.toRawUTF8());
+        CHECK(irOnly < modelOnly - 6.0 && statusB.contains("IR B"), "cabinet IR B blend");
+        irFile.deleteFile();
+    }
+
+    // 6. Оконечник Distortion: по умолчанию выключен, включённый - другой звук без скачка громкости
+    {
+        std::vector<float> riff((size_t) sr * 2);
+        for (size_t i = 0; i < riff.size(); ++i)
+        {
+            const double t = (double) i / sr, local = std::fmod(t, 0.25);
+            riff[i] = 0.25f * (float) (std::sin(2.0 * juce::MathConstants<double>::pi * 82.41 * t)
+                                       + 0.5 * std::sin(2.0 * juce::MathConstants<double>::pi * 164.8 * t)) * (float) std::exp(-local * 10.0);
+        }
+
+        for (int model = 0; model < 5; ++model)
+        {
+            DistortionProcessor plain, powered;
+            const auto a = runEffect(plain, riff, { { "model", (float) model } });
+            const auto b = runEffect(powered, riff, { { "model", (float) model }, { "power", 80.0f }, { "sag", 70.0f },
+                                                      { "resonance", 6.0f } });
+            double diff = 0.0;
+            bool finite = true;
+            for (size_t i = 0; i < a.size(); ++i) { diff += std::abs(a[i] - b[i]); finite = finite && std::isfinite(b[i]); }
+            const double db = rmsDbOf(b, 4800, b.size()) - rmsDbOf(a, 4800, a.size());
+            std::printf("Power amp, model %d: level %+.1f dB\n", model, db);
+            CHECK(finite && diff / (double) a.size() > 0.002 && std::abs(db) < 4.0, "power amp section, model %d", model);
+        }
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI init;
@@ -2487,6 +2724,8 @@ int main()
     testLooper();
     stage("testAmpModels");
     testAmpModels();
+    stage("testNewPedals");
+    testNewPedals();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

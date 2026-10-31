@@ -979,6 +979,18 @@
     <ClCompile Include="..\..\Source\HeaderWidgets.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\Source\CompressorProcessor.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\ModulationProcessor.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\WahProcessor.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Source\HarmonizerProcessor.cpp">
+      <Filter>GuitarTX\Source</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Program Files\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.cpp">
       <Filter>JUCE Modules\juce_audio_basics\audio_play_head</Filter>
     </ClCompile>
@@ -4384,6 +4396,18 @@
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
     <ClInclude Include="..\..\Source\HeaderWidgets.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\CompressorProcessor.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\ModulationProcessor.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\WahProcessor.h">
+      <Filter>GuitarTX\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Source\HarmonizerProcessor.h">
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
     <ClInclude Include="..\..\Source\GlobalTempo.h">

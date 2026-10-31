@@ -2,6 +2,31 @@
 
 All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
 
+## [0.5.0] - 2026-10-31
+
+### Added
+- **Compressor** pedal: threshold, ratio, attack, release, makeup, **Mix** (parallel compression), soft knee,
+  gain reduction on the pedal.
+- **Modulation** pedal: **Chorus**, **Flanger** (feedback +/-), **Phaser** (6 stages, feedback), **Tremolo**;
+  rate, depth, mix, stereo width (the right channel is a quarter period off).
+- **Wah** pedal (350 Hz – 2.2 kHz, Q): **Pedal** — Position for an expression pedal (right-click → MIDI Learn),
+  **Auto** — opens with your picking (Sens), **LFO**.
+- **Harmonizer**: two voices **in key** (Key + Scale: major, minor, harmonic minor, dorian, phrygian, mixolydian),
+  ±3rd / 4th / 5th / 6th / octave; the pitch is tracked, so a third is major or minor as the key wants. Play single notes.
+- **Cabinet**: a second IR (**IR B**) and **Mix A/B** (without IR A, IR B blends with the built-in model);
+  **Mic Pos** (centre → edge of the cone: darker) and **Mic Dist** (less proximity bass, an early reflection).
+  At the defaults the cabinet sounds exactly as before.
+- **Power amp section** in Distortion for all models: **Power** (power-tube saturation), **Sag** (supply sag, adds to the
+  model's own), **Resonance** (speaker / output transformer resonance ~90 Hz). Off by default — old presets unchanged.
+- **Interface scale** 80 / 90 / 100 / 110 / 125 % (settings button → Interface scale), remembered.
+- **CPU load** in the status line (orange from 60 %, red from 80 %).
+- **8 new Showcase presets** (90 in total): Wah Shred Lead, Auto Wah Funk, Harmony Lead (E minor), Chorus Clean,
+  Phaser Doom, Jet Flanger Riff, Studio Rhythm (mic), Tremolo Dream.
+
+### Changed
+- The settings button opens a menu: Audio / MIDI device and Interface scale.
+- About: shorter, version and GitHub link only.
+
 ## [0.4.2] - 2026-10-31
 
 ### Added

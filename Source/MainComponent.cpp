@@ -29,7 +29,8 @@ MainComponent::MainComponent()
     addAndMakeVisible(logo);
 
     // Кнопка окна настроек звука
-    audioSettingsButton.onClick = [this] { showAudioSettings(); };
+    audioSettingsButton.setTooltip("Settings: audio / MIDI device, interface scale");
+    audioSettingsButton.onClick = [this] { showSettingsMenu(); };
     addAndMakeVisible(audioSettingsButton);
 
     // Тюнер: окно поверх педалборда, по умолчанию глушит выход
@@ -59,10 +60,19 @@ MainComponent::MainComponent()
     hintLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
     addAndMakeVisible(hintLabel);
 
-    // Строка статуса (текущее аудиоустройство)
+    // Строка статуса (текущее аудиоустройство) и загрузка процессора справа
     statusLabel.setFont(juce::FontOptions(13.0f));
     statusLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
     addAndMakeVisible(statusLabel);
+
+    cpuLabel.setFont(juce::FontOptions(13.0f));
+    cpuLabel.setJustificationType(juce::Justification::centredRight);
+    cpuLabel.setTooltip("Audio processing load (share of the buffer time). Above ~70 % - raise the buffer size");
+    addAndMakeVisible(cpuLabel);
+
+    // Масштаб интерфейса - до первого показа окна
+    if (auto ui = settings.loadXml("ui"))
+        applyInterfaceScale((float) ui->getDoubleAttribute("scale", 1.0));
 
     // Педалборд, gain'ы и текущий пресет
     restoreRack();
@@ -1099,6 +1109,63 @@ void MainComponent::saveDeviceState()
 }
 
 //==============================================================================
+void MainComponent::showSettingsMenu()
+{
+    juce::PopupMenu scaleMenu;
+
+    for (const int percent : { 80, 90, 100, 110, 125 })
+        scaleMenu.addItem(100 + percent, juce::String(percent) + " %", true,
+                          std::abs(interfaceScale * 100.0f - (float) percent) < 0.5f);
+
+    juce::PopupMenu menu;
+    menu.addItem(1, "Audio / MIDI device...");
+    menu.addSubMenu("Interface scale", scaleMenu);
+
+    juce::Component::SafePointer<MainComponent> safeThis(this);
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&audioSettingsButton),
+                       [safeThis](int result)
+                       {
+                           if (safeThis == nullptr)
+                               return;
+
+                           if (result == 1)
+                           {
+                               safeThis->showAudioSettings();
+                           }
+                           else if (result > 100)
+                           {
+                               safeThis->applyInterfaceScale((float) (result - 100) / 100.0f);
+
+                               juce::XmlElement ui("GuitarTXUi");
+                               ui.setAttribute("scale", (double) safeThis->interfaceScale);
+                               safeThis->settings.saveXml("ui", &ui);
+                           }
+                       });
+}
+
+void MainComponent::applyInterfaceScale(float scale)
+{
+    // Масштаб всего интерфейса (все окна); окно фиксированного логического размера растёт / уменьшается
+    interfaceScale = juce::jlimit(0.8f, 1.25f, scale);
+    juce::Desktop::getInstance().setGlobalScaleFactor(interfaceScale);
+}
+
+void MainComponent::updateCpuLabel()
+{
+    const float usage = (float) audioEngine.getDeviceManager().getCpuUsage() * 100.0f;
+    cpuDisplay = usage > cpuDisplay ? usage : cpuDisplay * 0.7f + usage * 0.3f;
+
+    const auto text = "CPU " + juce::String(juce::roundToInt(cpuDisplay)) + " %";
+
+    if (cpuLabel.getText() != text)
+        cpuLabel.setText(text, juce::dontSendNotification);
+
+    cpuLabel.setColour(juce::Label::textColourId, cpuDisplay >= 80.0f ? juce::Colours::red
+                                                : cpuDisplay >= 60.0f ? juce::Colours::orange
+                                                                      : juce::Colours::grey);
+}
+
 void MainComponent::showAudioSettings()
 {
     if (settingsWindow == nullptr)
@@ -1200,6 +1267,12 @@ void MainComponent::timerCallback()
     // Окна могли закрыть крестиком
     updateWindowButtons();
 
+    if (++cpuTicks >= 15)
+    {
+        cpuTicks = 0;
+        updateCpuLabel();
+    }
+
     if (transientTicks > 0 && --transientTicks == 0 && ! midi.isLearning())
     {
         transientStatus.clear();
@@ -1232,8 +1305,10 @@ void MainComponent::resized()
 {
     auto area = getLocalBounds().reduced(20, 12);
 
-    // Строка статуса внизу
-    statusLabel.setBounds(area.removeFromBottom(20));
+    // Строка статуса внизу, справа - загрузка CPU
+    auto statusRow = area.removeFromBottom(20);
+    cpuLabel.setBounds(statusRow.removeFromRight(90));
+    statusLabel.setBounds(statusRow);
 
     // Шапка: значок | пресет + A/B (по центру) | тюнер, MIDI, настройки
     auto header = area.removeFromTop(56);

@@ -63,7 +63,10 @@ namespace
 CabinetProcessor::CabinetProcessor()
     : EffectBase(createLayout()),
       modelChoice(getParameterValue("model")),
-      levelDb(getParameterValue("level"))
+      levelDb(getParameterValue("level")),
+      mixPercent(getParameterValue("mix")),
+      positionPercent(getParameterValue("position")),
+      distancePercent(getParameterValue("distance"))
 {
 }
 
@@ -74,6 +77,11 @@ EffectBase::Layout CabinetProcessor::createLayout()
     layout.add(makeChoiceParameter("model", "Model",
                                    { "Auto", "4x12 Modern", "4x12 Vintage", "2x12 Open", "1x12 Combo" }, 0));
     layout.add(makeFloatParameter("level", "Cab Level", -30.0f, 12.0f, 0.1f, 0.0f, "dB", 1));
+
+    // Новые - в конце: старые пресеты без них звучат как раньше (B нет, микрофон в центре вплотную)
+    layout.add(makeFloatParameter("mix",      "Mix A/B",  0.0f, 100.0f, 1.0f, 50.0f, "%", 0));
+    layout.add(makeFloatParameter("position", "Mic Pos",  0.0f, 100.0f, 1.0f,  0.0f, "%", 0));
+    layout.add(makeFloatParameter("distance", "Mic Dist", 0.0f, 100.0f, 1.0f,  0.0f, "%", 0));
 
     return layout;
 }
@@ -103,53 +111,58 @@ CabinetProcessor::Model CabinetProcessor::getActiveBuiltInModel() const noexcept
 
 juce::String CabinetProcessor::getStatusText() const
 {
-    return isUsingImpulseResponse() ? juce::String("IR") : getModelName(getActiveBuiltInModel()).toUpperCase();
+    const auto a = isUsingImpulseResponse() ? juce::String("IR") : getModelName(getActiveBuiltInModel()).toUpperCase();
+    return irLoadedB.load() ? a + " + IR B" : a;
 }
 
 //==============================================================================
-bool CabinetProcessor::loadImpulseResponse(const juce::File& file)
+bool CabinetProcessor::loadImpulseResponse(const juce::File& file, int slot)
 {
-    getValueTreeState().state.setProperty(irPathProperty, file.getFullPathName(), nullptr);
+    auto& loaded = slot == slotB ? irLoadedB : irLoaded;
+    getValueTreeState().state.setProperty(slot == slotB ? irPathPropertyB : irPathProperty, file.getFullPathName(), nullptr);
 
     if (! file.existsAsFile())
     {
-        irLoaded.store(false);
+        loaded.store(false);
         return false;
     }
 
     // IR считаем моно (типично для гитарных кабинетов),
     // обрезаем тишину в начале/конце и нормализуем.
-    convolution.loadImpulseResponse(file,
+    (slot == slotB ? convolutionB : convolution).loadImpulseResponse(file,
                                     juce::dsp::Convolution::Stereo::no,
                                     juce::dsp::Convolution::Trim::yes,
                                     0, // 0 = вся длина файла
                                     juce::dsp::Convolution::Normalise::yes);
 
-    irLoaded.store(true);
+    loaded.store(true);
     return true;
 }
 
-void CabinetProcessor::clearImpulseResponse()
+void CabinetProcessor::clearImpulseResponse(int slot)
 {
-    // Свёртка остаётся загруженной, но не используется: аудиопоток смотрит только на irLoaded
-    irLoaded.store(false);
-    getValueTreeState().state.removeProperty(irPathProperty, nullptr);
+    // Свёртка остаётся загруженной, но не используется: аудиопоток смотрит только на флаг
+    (slot == slotB ? irLoadedB : irLoaded).store(false);
+    getValueTreeState().state.removeProperty(slot == slotB ? irPathPropertyB : irPathProperty, nullptr);
 }
 
-juce::File CabinetProcessor::getImpulseResponseFile()
+juce::File CabinetProcessor::getImpulseResponseFile(int slot)
 {
-    const auto path = getValueTreeState().state.getProperty(irPathProperty).toString();
+    const auto path = getValueTreeState().state.getProperty(slot == slotB ? irPathPropertyB : irPathProperty).toString();
     return path.isNotEmpty() ? juce::File(path) : juce::File();
 }
 
 void CabinetProcessor::stateRestored()
 {
-    const auto file = getImpulseResponseFile();
+    for (const int slot : { slotA, slotB })
+    {
+        const auto file = getImpulseResponseFile(slot);
 
-    if (file == juce::File())
-        irLoaded.store(false);
-    else
-        loadImpulseResponse(file);
+        if (file == juce::File())
+            (slot == slotB ? irLoadedB : irLoaded).store(false);
+        else
+            loadImpulseResponse(file, slot);
+    }
 }
 
 //==============================================================================
@@ -165,25 +178,168 @@ void CabinetProcessor::prepareEffect(double newSampleRate, int newMaxBlockSize)
     spec.numChannels      = 2;
 
     convolution.prepare(spec);
+    convolutionB.prepare(spec);
+    slotBBuffer.setSize(2, maxBlockSize, false, true, false);
+
+    int size = 1;
+    while (size < (int) (0.008 * sampleRate))
+        size <<= 1;
+
+    for (auto& line : reflection)
+        line.assign((size_t) size, 0.0f);
 
     levelSmoothed.reset(sampleRate, 0.02);
     levelSmoothed.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(levelDb.load()));
+    mixSmoothed.reset(sampleRate, 0.03);
 
-    wasActive = false;
+    lastPosition = lastDistance = -1.0f;
+    wasActive = wasActiveB = false;
+    resetEffect();
 }
 
 void CabinetProcessor::resetEffect()
 {
     convolution.reset();
+    convolutionB.reset();
 
     for (auto& filter : builtIn)
         filter.reset();
 
+    for (auto& filter : micFilters)
+        filter.reset();
+
+    for (auto& line : reflection)
+        std::fill(line.begin(), line.end(), 0.0f);
+
+    reflectionWrite = 0;
     levelSmoothed.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(levelDb.load()));
+    mixSmoothed.setCurrentAndTargetValue(irLoadedB.load() ? mixPercent.load() * 0.01f : 0.0f);
 }
 
 //==============================================================================
 void CabinetProcessor::processEffect(juce::AudioBuffer<float>& buffer)
+{
+    const int numChannels = juce::jmin(2, buffer.getNumChannels());
+    const int numSamples  = buffer.getNumSamples();
+
+    if (numChannels < 1 || numSamples < 1)
+        return;
+
+    // Без IR B - ровно прежний путь (старые пресеты звучат так же)
+    mixSmoothed.setTargetValue(irLoadedB.load() ? mixPercent.load() * 0.01f : 0.0f);
+    const bool blend = irLoadedB.load() || mixSmoothed.isSmoothing();
+
+    if (! blend)
+    {
+        wasActiveB = false;
+        processMain(buffer);
+        processMicrophone(buffer);
+        return;
+    }
+
+    if (! wasActiveB)
+    {
+        convolutionB.reset();
+        wasActiveB = true;
+    }
+
+    // Кусками по размеру буфера слота B
+    for (int start = 0; start < numSamples; start += maxBlockSize)
+    {
+        const int length = juce::jmin(maxBlockSize, numSamples - start);
+        juce::AudioBuffer<float> chunk(buffer.getArrayOfWritePointers(), numChannels, start, length);
+        juce::AudioBuffer<float> slot(slotBBuffer.getArrayOfWritePointers(), numChannels, 0, length);
+
+        for (int ch = 0; ch < numChannels; ++ch)
+            slot.copyFrom(ch, 0, chunk, ch, 0, length);
+
+        processMain(chunk);
+        convolve(convolutionB, slot);
+
+        const float level = juce::Decibels::decibelsToGain(levelDb.load());
+
+        for (int i = 0; i < length; ++i)
+        {
+            const float mix = mixSmoothed.getNextValue();
+
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                float* a = chunk.getWritePointer(ch);
+                a[i] = a[i] * (1.0f - mix) + slot.getSample(ch, i) * level * mix;
+            }
+        }
+    }
+
+    processMicrophone(buffer);
+}
+
+void CabinetProcessor::convolve(juce::dsp::Convolution& engine, juce::AudioBuffer<float>& buffer)
+{
+    juce::dsp::AudioBlock<float> fullBlock(buffer);
+    const int numSamples = buffer.getNumSamples();
+
+    for (int start = 0; start < numSamples; start += maxBlockSize)
+    {
+        auto chunk = fullBlock.getSubBlock((size_t) start, (size_t) juce::jmin(maxBlockSize, numSamples - start));
+        juce::dsp::ProcessContextReplacing<float> context(chunk);
+        engine.process(context);
+    }
+}
+
+void CabinetProcessor::updateMicrophone(float position, float distance)
+{
+    // Край диффузора - темнее и плотнее в середине; дальше - меньше эффекта близости и первое отражение
+    micFilters[0].setHighShelf(sampleRate, 2500.0f, -9.0f * position);
+    micFilters[1].setPeak(sampleRate, 1200.0f, 0.7f, 2.0f * position);
+    micFilters[2].setLowShelf(sampleRate, 160.0f, -6.0f * distance);
+
+    reflectionDelay = juce::jlimit(1, (int) reflection[0].size() - 1,
+                                   juce::roundToInt((0.6 + 2.4 * distance) * 0.001 * sampleRate));
+    reflectionGain = 0.3f * distance;
+
+    lastPosition = position;
+    lastDistance = distance;
+}
+
+void CabinetProcessor::processMicrophone(juce::AudioBuffer<float>& buffer)
+{
+    const float position = positionPercent.load() * 0.01f;
+    const float distance = distancePercent.load() * 0.01f;
+
+    if (position <= 0.0f && distance <= 0.0f)
+        return;
+
+    if (! juce::approximatelyEqual(position, lastPosition) || ! juce::approximatelyEqual(distance, lastDistance))
+        updateMicrophone(position, distance);
+
+    const int numChannels = juce::jmin(2, buffer.getNumChannels());
+    const int numSamples  = buffer.getNumSamples();
+    const int mask = (int) reflection[0].size() - 1;
+    int write = reflectionWrite;
+
+    for (int ch = 0; ch < numChannels; ++ch)
+    {
+        float* data = buffer.getWritePointer(ch);
+
+        for (auto& filter : micFilters)
+            filter.process(data, numSamples, ch);
+
+        // Отражение от пола / стены: копия с задержкой в несколько миллисекунд
+        auto& line = reflection[(size_t) ch];
+        write = reflectionWrite;
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            line[(size_t) write] = data[i];
+            data[i] += reflectionGain * line[(size_t) ((write - reflectionDelay) & mask)];
+            write = (write + 1) & mask;
+        }
+    }
+
+    reflectionWrite = write;
+}
+
+void CabinetProcessor::processMain(juce::AudioBuffer<float>& buffer)
 {
     if (! isUsingImpulseResponse())
     {

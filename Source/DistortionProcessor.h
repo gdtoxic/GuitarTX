@@ -14,7 +14,13 @@
 //
 //  Tight HPF -> [модель: pre HPF, mid push] -> [4x oversampling:
 //      каскад 1 (асимметричный tanh) -> межкаскадный фильтр ->
-//      каскад 2 (клиппер модели, сэг)] -> DC-блокер -> Bass/Mid/Treble/Presence -> [EQ модели] -> Level
+//      каскад 2 (клиппер модели, сэг), оконечник (Power)] -> DC-блокер -> Bass/Mid/Treble/Presence
+//      -> [EQ модели] -> Resonance -> Level
+//
+//  Секция оконечника (для всех моделей; по умолчанию выключена - звук моделей как раньше):
+//   Power     - насыщение мощных ламп поверх преампа (плотнее, "жирнее" атака)
+//   Sag       - просадка питания: громкая игра сжимается и "дышит" (добавляется к сэгу модели)
+//   Resonance - резонанс динамика / выходного трансформатора: упругий низ около 90 Гц
 //
 //  gain     - общее усиление перед клипперами (дБ), делится между двумя каскадами
 //  tight    - срез низа ДО клиппинга (Гц): выше = плотнее и чётче чаг
@@ -58,6 +64,12 @@ private:
     std::atomic<float>& trebleDb;
     std::atomic<float>& presenceDb;
     std::atomic<float>& levelDb;
+    std::atomic<float>& powerPercent;
+    std::atomic<float>& sagPercent;
+    std::atomic<float>& resonanceDb;
+
+    Biquad resonanceFilter;
+    float lastResonance = 1000.0f;
 
     juce::dsp::Oversampling<float> oversampling
     {

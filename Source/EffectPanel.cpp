@@ -166,20 +166,36 @@ CabinetPanel::CabinetPanel(CabinetProcessor& cabinetToEdit)
     : EffectPanel(cabinetToEdit),
       cabinet(cabinetToEdit)
 {
-    loadIrButton.onClick = [this] { chooseImpulseResponse(); };
+    loadIrButton.setTooltip("Main impulse response (Model: Auto)");
+    loadIrButton.onClick = [this] { chooseImpulseResponse(CabinetProcessor::slotA); };
     addAndMakeVisible(loadIrButton);
 
-    clearIrButton.setTooltip("Remove the IR and use the built-in cabinet model");
+    loadIrBButton.setTooltip("Second impulse response, blended with Mix A/B (with the built-in model if there is no IR A)");
+    loadIrBButton.onClick = [this] { chooseImpulseResponse(CabinetProcessor::slotB); };
+    addAndMakeVisible(loadIrBButton);
+
+    clearIrButton.setTooltip("Remove IR A and use the built-in cabinet model");
     clearIrButton.onClick = [this]
     {
-        cabinet.clearImpulseResponse();
+        cabinet.clearImpulseResponse(CabinetProcessor::slotA);
         updateIrLabel();
     };
     addAndMakeVisible(clearIrButton);
 
+    clearIrBButton.setTooltip("Remove IR B");
+    clearIrBButton.onClick = [this]
+    {
+        cabinet.clearImpulseResponse(CabinetProcessor::slotB);
+        updateIrLabel();
+    };
+    addAndMakeVisible(clearIrBButton);
+
     // Длинные имена файлов: обрезать с "...", а не сжимать шрифт; полный путь - в подсказке
-    irLabel.setMinimumHorizontalScale(1.0f);
-    addAndMakeVisible(irLabel);
+    for (auto* label : { &irLabel, &irBLabel })
+    {
+        label->setMinimumHorizontalScale(1.0f);
+        addAndMakeVisible(*label);
+    }
 
     if (auto* model = cabinet.getValueTreeState().getParameter("model"))
         modelWatcher = std::make_unique<juce::ParameterAttachment>(*model, [this](float value)
@@ -193,20 +209,31 @@ CabinetPanel::CabinetPanel(CabinetProcessor& cabinetToEdit)
 
 void CabinetPanel::layoutExtra(juce::Rectangle<int> area)
 {
-    area = area.reduced(0, 4);
+    auto rowA = area.removeFromTop(34).reduced(0, 3);
+    auto rowB = area.removeFromTop(34).reduced(0, 3);
 
-    loadIrButton.setBounds(area.removeFromLeft(100));
-    area.removeFromLeft(6);
-    clearIrButton.setBounds(area.removeFromLeft(80));
-    area.removeFromLeft(10);
-    irLabel.setBounds(area);
+    loadIrButton.setBounds(rowA.removeFromLeft(110));
+    rowA.removeFromLeft(6);
+    clearIrButton.setBounds(rowA.removeFromLeft(64));
+    rowA.removeFromLeft(10);
+    irLabel.setBounds(rowA);
+
+    loadIrBButton.setBounds(rowB.removeFromLeft(110));
+    rowB.removeFromLeft(6);
+    clearIrBButton.setBounds(rowB.removeFromLeft(64));
+    rowB.removeFromLeft(10);
+    irBLabel.setBounds(rowB);
 }
 
-void CabinetPanel::chooseImpulseResponse()
+void CabinetPanel::chooseImpulseResponse(int slot)
 {
+    const auto current = cabinet.getImpulseResponseFile(slot);
+    const auto other   = cabinet.getImpulseResponseFile(1 - slot);
+
     fileChooser = std::make_unique<juce::FileChooser>(
-        "Select cabinet impulse response",
-        cabinet.getImpulseResponseFile().getParentDirectory(),
+        slot == CabinetProcessor::slotB ? "Select the second cabinet impulse response (IR B)"
+                                        : "Select cabinet impulse response",
+        (current != juce::File() ? current : other).getParentDirectory(),
         "*.wav;*.aif;*.aiff;*.flac");
 
     const auto chooserFlags = juce::FileBrowserComponent::openMode
@@ -214,25 +241,26 @@ void CabinetPanel::chooseImpulseResponse()
 
     juce::Component::SafePointer<CabinetPanel> safeThis(this);
 
-    fileChooser->launchAsync(chooserFlags, [safeThis](const juce::FileChooser& chooser)
+    fileChooser->launchAsync(chooserFlags, [safeThis, slot](const juce::FileChooser& chooser)
     {
         if (safeThis == nullptr)
             return;
 
         const auto file = chooser.getResult();
 
-        if (file.existsAsFile())
-        {
-            auto& cab = safeThis->cabinet;
-            cab.loadImpulseResponse(file);
+        if (! file.existsAsFile())
+            return;
 
-            // Загрузили IR - значит, хотим его слышать: Model -> Auto (через параметр, чтобы ручка повернулась)
+        auto& cab = safeThis->cabinet;
+        cab.loadImpulseResponse(file, slot);
+
+        // Загрузили IR A - значит, хотим его слышать: Model -> Auto (через параметр, чтобы ручка повернулась)
+        if (slot == CabinetProcessor::slotA)
             if (auto* model = cab.getValueTreeState().getParameter("model"))
-                if (cab.getActiveBuiltInModel() != CabinetProcessor::Model::automatic && ! cab.isUsingImpulseResponse())
+                if (! cab.isUsingImpulseResponse())
                     model->setValueNotifyingHost(model->convertTo0to1(0.0f));
 
-            safeThis->updateIrLabel(0);
-        }
+        safeThis->updateIrLabel();
     });
 }
 
@@ -273,6 +301,27 @@ void CabinetPanel::updateIrLabel(std::optional<int> modelIndex)
 
     irLabel.setText(text, juce::dontSendNotification);
     irLabel.setColour(juce::Label::textColourId, colour);
+
+    // Слот B
+    const auto fileB = cabinet.getImpulseResponseFile(CabinetProcessor::slotB);
+    clearIrBButton.setEnabled(fileB != juce::File());
+    irBLabel.setTooltip(fileB != juce::File() ? fileB.getFullPathName() : juce::String());
+
+    if (cabinet.hasImpulseResponse(CabinetProcessor::slotB))
+    {
+        irBLabel.setText("IR B: " + fileB.getFileNameWithoutExtension() + "   (blend with Mix A/B)", juce::dontSendNotification);
+        irBLabel.setColour(juce::Label::textColourId, juce::Colours::limegreen);
+    }
+    else if (fileB != juce::File())
+    {
+        irBLabel.setText("IR B not found: " + fileB.getFileName(), juce::dontSendNotification);
+        irBLabel.setColour(juce::Label::textColourId, juce::Colours::orange);
+    }
+    else
+    {
+        irBLabel.setText("No IR B   (load a second IR to blend two cabinets / mics)", juce::dontSendNotification);
+        irBLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
+    }
 }
 
 //==============================================================================

@@ -2,12 +2,15 @@ GuitarTX {{VERSION}} (Windows x64)
 ==============================
 
 Standalone guitar processor in the Doom / Mick Gordon spirit:
-Noise Gate, Overdrive, Distortion (amp models Modern / American / British / Doom Fuzz / Tight), Cabinet (IR or built-in models), EQ, Tone Match, Sub 808, Chaos,
+Noise Gate, Compressor, Wah, Overdrive, Distortion (amp models Modern / American / British / Doom Fuzz / Tight,
+power amp: Power / Sag / Resonance), Cabinet (IR or built-in models, two IRs with a mix, mic position / distance),
+Harmonizer (in key), Modulation (chorus / flanger / phaser / tremolo), EQ, Tone Match, Sub 808, Chaos,
 Pitch, Glitch (stutter / glitch / freeze), Delay, Reverb, drum machine, looper,
 Master compressor + limiter, Tuner, reorderable chain, parallel lane, presets.
 
 Run: GuitarTX.exe (no installer needed).
-Audio: Settings -> pick your audio interface (ASIO recommended), input/output channels.
+Audio: settings button (sliders icon) -> Audio / MIDI device: pick your interface (ASIO recommended).
+     Same menu: Interface scale 80-125 %. CPU load is shown at the bottom right.
 Tuner: TUNER button (Esc to close). Mutes the output while open (can be turned off).
 MIDI: MIDI button. Right-click a knob -> MIDI Learn (expression pedal), right-click a pedal title -> footswitch.
      Switch mode Toggle (each press) or Hold (on while pressed, off when released): pedals, snapshot B,

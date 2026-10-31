@@ -11,6 +11,10 @@
 #include "ReverbProcessor.h"
 #include "EqProcessor.h"
 #include "GlitchProcessor.h"
+#include "CompressorProcessor.h"
+#include "ModulationProcessor.h"
+#include "WahProcessor.h"
+#include "HarmonizerProcessor.h"
 
 namespace
 {
@@ -28,11 +32,15 @@ const std::vector<EffectDescriptor>& EffectRegistry::getAll()
     static const std::vector<EffectDescriptor> registry
     {
         describe<NoiseGateProcessor>("Noise Gate"),
+        describe<CompressorProcessor>("Compressor"),
+        describe<WahProcessor>      ("Wah (pedal / auto / LFO)"),
         describe<OverdriveProcessor>("Overdrive"),
         describe<DistortionProcessor>("Distortion (High Gain)"),
         describe<CabinetProcessor>  ("Cabinet (IR)"),
         describe<ToneMatchProcessor>("Tone Match"),
         describe<PitchProcessor>    ("Pitch (octave / whammy / dive)"),
+        describe<HarmonizerProcessor>("Harmonizer (in key)"),
+        describe<ModulationProcessor>("Modulation (chorus / flanger / phaser / tremolo)"),
         describe<DelayProcessor>    ("Delay (digital / tape / ping-pong)"),
         describe<ReverbProcessor>   ("Reverb (room / plate / hall)"),
         describe<EqProcessor>       ("EQ (parametric)"),

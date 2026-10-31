@@ -14,9 +14,13 @@ Standalone гитарный процессор на **JUCE** (Windows). Цель
 | Эффект | Что делает |
 |---|---|
 | Noise Gate | Гейт для хай-гейна |
+| Compressor | Педальный компрессор: threshold, ratio, attack / release, makeup, **Mix** (параллельная компрессия); индикатор подавления |
+| Wah | Резонансный фильтр 350 Гц – 2.2 кГц: **Pedal** (Position под экспрессию через MIDI Learn), **Auto** (от силы удара), **LFO** |
 | Overdrive | Буст / мягкий перегруз перед дисторшном |
-| Distortion | Хай-гейн: 2 каскада клиппинга, 4x oversampling, пост-EQ; **модели усилителя**: Modern, American (5150 / Rectifier, сэг), British (JCM800), Doom Fuzz (Big Muff), Tight (djent) |
-| Cabinet | Свёртка с IR кабинета (загрузка своих `.wav`, Clear IR — обратно на встроенную) или встроенные модели: 4x12 Modern / Vintage, 2x12 Open, 1x12 Combo |
+| Distortion | Хай-гейн: 2 каскада клиппинга, 4x oversampling, пост-EQ; **модели усилителя**: Modern, American (5150 / Rectifier, сэг), British (JCM800), Doom Fuzz (Big Muff), Tight (djent); **оконечник**: Power (насыщение мощных ламп), Sag (просадка питания), Resonance (резонанс динамика) |
+| Cabinet | Свёртка с IR кабинета (загрузка своих `.wav`, Clear — обратно на встроенную) или встроенные модели: 4x12 Modern / Vintage, 2x12 Open, 1x12 Combo; **второй IR (B)** с ручкой **Mix A/B**, **микрофон**: позиция (центр → край диффузора) и расстояние |
+| Harmonizer | Два голоса **по ладу** (Key + Scale: мажор, минор, гармонический минор, дорийский, фригийский, миксолидийский): ±терция / кварта / квинта / секста / октава |
+| Modulation | **Chorus / Flanger / Phaser / Tremolo**: rate, depth, feedback, mix, стерео-ширина |
 | Tone Match | Подгонка тембра под эталонную запись (минимально-фазовый EQ, без задержки) |
 | Sub 808 | Саб-бас по высоте гитары (YIN-трекинг, Sine / Square / Divider, Punch) |
 | Chaos | Fuzz / ring mod / bitcrush / downsample / жёсткий гейт |
@@ -37,8 +41,8 @@ Standalone гитарный процессор на **JUCE** (Windows). Цель
 - **Рекордер** — кнопка REC: два WAV одной длины — **DI** (сухая гитара, моно) и **Wet** (обработанный звук, стерео), 24-bit или 32-bit float, папка `Документы\GuitarTX\Recordings`. **Re-amp** (меню ▾): DI-файл играет вместо гитары через текущий пресет и записывается заново.
 - **Snapshots A/B** — кнопки A / B рядом с пресетом: два набора ручек и On/Off для одной цепочки (ритм / соло), переключение мгновенное, сохраняются в пресете. ПКМ — скопировать в другой снапшот.
 - **Браузер пресетов** — кнопка Browse: поиск по имени, стилю и тегам, избранное (★), папки, свои теги, импорт/экспорт `.gtxpreset`.
-- **Пресеты** цепочек и настроек: 82 заводских в 11 категориях (Doom, Metal, Nu-Metal, Industrial, Extreme, Alt Rock, Clean & Crunch, **Top Picks**, **Showcase**, **Insane**, Utility) + пользовательские (`%APPDATA%\GuitarTX\Presets\*.gtxpreset`).
-- Регуляторы Input / Output, индикаторы уровня, автосохранение сессии.
+- **Пресеты** цепочек и настроек: 90 заводских в 11 категориях (Doom, Metal, Nu-Metal, Industrial, Extreme, Alt Rock, Clean & Crunch, **Top Picks**, **Showcase**, **Insane**, Utility) + пользовательские (`%APPDATA%\GuitarTX\Presets\*.gtxpreset`).
+- Регуляторы Input / Output, индикаторы уровня, автосохранение сессии, **загрузка CPU** в строке статуса, **масштаб интерфейса** 80–125 % (кнопка настроек).
 
 ## Сборка
 

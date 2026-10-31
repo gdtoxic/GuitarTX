@@ -177,7 +177,7 @@ namespace
             link.setFont(juce::FontOptions(13.0f), false, juce::Justification::centredLeft);
             link.setColour(juce::HyperlinkButton::textColourId, GuitarTXLookAndFeel::accent);
             addAndMakeVisible(link);
-            setSize(300, 150);
+            setSize(280, 128);
         }
 
         void paint(juce::Graphics& g) override
@@ -198,11 +198,7 @@ namespace
             g.setFont(uiFont(13.0f));
             g.drawText(juce::String("Version ") + ProjectInfo::versionString, top, juce::Justification::centredLeft, false);
 
-            area.removeFromTop(10);
-            g.setColour(textColour);
-            g.drawText("Guitar processor in the Doom / Mick Gordon spirit", area.removeFromTop(18),
-                       juce::Justification::centredLeft, false);
-            area.removeFromTop(22);
+            area.removeFromTop(36);
             g.setColour(mutedText);
             g.setFont(uiFont(12.0f));
             g.drawText("Open source, GNU AGPLv3", area.removeFromTop(18), juce::Justification::centredLeft, false);
@@ -210,7 +206,7 @@ namespace
 
         void resized() override
         {
-            link.setBounds(16, 92, getWidth() - 32, 20);
+            link.setBounds(16, 70, getWidth() - 32, 20);
         }
 
     private:

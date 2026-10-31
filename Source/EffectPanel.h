@@ -113,20 +113,23 @@ public:
     explicit CabinetPanel(CabinetProcessor& cabinetToEdit);
 
 protected:
-    int  getExtraHeight() const override { return 36; }
+    int  getExtraHeight() const override { return 68; }
     void layoutExtra(juce::Rectangle<int> area) override;
 
 private:
-    void chooseImpulseResponse();
+    void chooseImpulseResponse(int slot);
 
     // modelIndex - положение Model; без него берётся текущее значение параметра
     void updateIrLabel(std::optional<int> modelIndex = std::nullopt);
 
     CabinetProcessor& cabinet;
 
-    juce::TextButton loadIrButton  { "Load IR..." };
-    juce::TextButton clearIrButton { "Clear IR" };
+    juce::TextButton loadIrButton  { "Load IR A..." };
+    juce::TextButton clearIrButton { "Clear" };
     juce::Label      irLabel;
+    juce::TextButton loadIrBButton  { "Load IR B..." };
+    juce::TextButton clearIrBButton { "Clear" };
+    juce::Label      irBLabel;
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     // Смена Model -> обновить подпись (колбэк приходит в message thread)

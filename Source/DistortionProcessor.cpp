@@ -76,7 +76,10 @@ DistortionProcessor::DistortionProcessor()
       midDb     (getParameterValue("mid")),
       trebleDb  (getParameterValue("treble")),
       presenceDb(getParameterValue("presence")),
-      levelDb   (getParameterValue("level"))
+      levelDb   (getParameterValue("level")),
+      powerPercent(getParameterValue("power")),
+      sagPercent(getParameterValue("sag")),
+      resonanceDb(getParameterValue("resonance"))
 {
 }
 
@@ -93,6 +96,11 @@ EffectBase::Layout DistortionProcessor::createLayout()
     layout.add(makeFloatParameter("treble",   "Treble",   -12.0f,  12.0f, 0.1f,   2.0f, "dB", 1));
     layout.add(makeFloatParameter("presence", "Presence", -12.0f,  12.0f, 0.1f,   2.0f, "dB", 1));
     layout.add(makeFloatParameter("level",    "Level",    -40.0f,   6.0f, 0.1f, -12.0f, "dB", 1));
+
+    // Оконечник - в конце: в старых пресетах его нет, значит 0 (звук как раньше)
+    layout.add(makeFloatParameter("power",     "Power",      0.0f, 100.0f, 1.0f,  0.0f, "%",  0));
+    layout.add(makeFloatParameter("sag",       "Sag",        0.0f, 100.0f, 1.0f,  0.0f, "%",  0));
+    layout.add(makeFloatParameter("resonance", "Resonance",  0.0f,  12.0f, 0.1f,  0.0f, "dB", 1));
 
     return layout;
 }
@@ -131,7 +139,7 @@ void DistortionProcessor::resetEffect()
     for (auto* filter : { &tightFilter, &midPush, &dcBlocker,
                           &bassFilter, &midFilter, &trebleFilter, &presenceFilter,
                           &interStageHighPass, &interStageLowPass,
-                          &voicePreHighPass, &voiceLow, &voiceMid, &voiceHigh })
+                          &voicePreHighPass, &voiceLow, &voiceMid, &voiceHigh, &resonanceFilter })
         filter->reset();
 
     sagEnvelope.fill(0.0f);
@@ -199,6 +207,14 @@ void DistortionProcessor::updateFilters(bool force)
         presenceFilter.setHighShelf(sampleRate, presenceHz, presence);
         lastPresence = presence;
     }
+
+    const float resonance = resonanceDb.load();
+
+    if (force || resonance != lastResonance)
+    {
+        resonanceFilter.setPeak(sampleRate, 90.0f, 1.3f, resonance);
+        lastResonance = resonance;
+    }
 }
 
 //==============================================================================
@@ -240,6 +256,8 @@ void DistortionProcessor::processChunk(juce::dsp::AudioBlock<float>& block)
     const int numChannels = (int) block.getNumChannels();
     const int numSamples  = (int) block.getNumSamples();
     const bool voiced     = currentModel != Model::modern;
+    const bool resonant   = resonanceDb.load() > 0.0f;
+    const float resonanceTrim = juce::Decibels::decibelsToGain(-0.3f * resonanceDb.load());
 
     // 1. До клиппинга: срезаем низ (tight) и выталкиваем середину
     for (int ch = 0; ch < numChannels; ++ch)
@@ -272,6 +290,13 @@ void DistortionProcessor::processChunk(juce::dsp::AudioBlock<float>& block)
     const float bias = v.bias;
     const float biasOffset = std::tanh(bias);
 
+    // Оконечник: сэг модели + ручка Sag, насыщение Power (нормировано: пик 1 остаётся около 1)
+    const float sag = juce::jmin(0.85f, v.sag + 0.6f * sagPercent.load() * 0.01f);
+    const float power = powerPercent.load() * 0.01f;
+    const float powerDrive = 1.0f + 4.0f * power;
+    // Насыщение уплотняет звук (громче по RMS) - компенсируем, чтобы ручка меняла характер, а не громкость
+    const float powerNorm = juce::Decibels::decibelsToGain(-3.5f * power) / std::tanh(powerDrive);
+
     for (int i = 0; i < osSamples; ++i)
     {
         const float g1 = stage1Gain.getNextValue();
@@ -288,17 +313,23 @@ void DistortionProcessor::processChunk(juce::dsp::AudioBlock<float>& block)
             // Сэг: громкая игра немного "проседает" - гейн второго каскада следует за огибающей
             float gain2 = g2;
 
-            if (v.sag > 0.0f)
+            if (sag > 0.0f)
             {
                 const float a = std::abs(x);
                 auto& env = sagEnvelope[(size_t) ch];
                 env = a > env ? a + sagAttack * (env - a) : a + sagRelease * (env - a);
-                gain2 *= 1.0f - v.sag * juce::jmin(1.0f, env);
+                gain2 *= 1.0f - sag * juce::jmin(1.0f, env);
             }
 
             // Каскад 2: клиппер модели
             const float y = x * gain2;
-            ptrs[ch][i] = v.clipper == 2 ? fuzzClip(y) : v.clipper == 1 ? std::tanh(y) : hardishClip(y);
+            float out = v.clipper == 2 ? fuzzClip(y) : v.clipper == 1 ? std::tanh(y) : hardishClip(y);
+
+            // Мощные лампы: мягкое насыщение поверх преампа
+            if (power > 0.0f)
+                out = std::tanh(out * powerDrive) * powerNorm;
+
+            ptrs[ch][i] = out;
         }
     }
 
@@ -323,6 +354,9 @@ void DistortionProcessor::processChunk(juce::dsp::AudioBlock<float>& block)
             // Modern - исходный звук без "окраски" модели (совместимость старых пресетов)
             if (voiced)
                 x = voiceHigh.processSample(ch, voiceMid.processSample(ch, voiceLow.processSample(ch, x)));
+
+            if (resonant)
+                x = resonanceFilter.processSample(ch, x) * resonanceTrim;
 
             ptrs[ch][i] = x * level;
         }

@@ -11,6 +11,10 @@
 #include "GlitchProcessor.h"
 #include "ReverbProcessor.h"
 #include "EqProcessor.h"
+#include "CompressorProcessor.h"
+#include "ModulationProcessor.h"
+#include "WahProcessor.h"
+#include "HarmonizerProcessor.h"
 #include "EffectRegistry.h"
 
 namespace
@@ -970,6 +974,96 @@ namespace
                                                  { "mix", 100.0f } },
                   false, { { "chaos", 80.0f }, { "division", 6.0f } } },
                 { ReverbProcessor::typeId,     { { "mode", 0.0f }, { "decay", 0.8f }, { "mix", 10.0f } } } } },
+
+            // ----- Showcase v0.5: компрессор, модуляция, wah, гармонайзер, оконечник, микрофон -----
+
+            // Соло на wah-педали (Position - под экспрессию через MIDI Learn), American с оконечником
+            { "Wah Shred Lead", "Showcase",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -58.0f }, { "hold", 40.0f }, { "release", 140.0f } } },
+                { CompressorProcessor::typeId, { { "threshold", -30.0f }, { "ratio", 4.0f }, { "attack", 10.0f },
+                                                 { "release", 150.0f }, { "makeup", 6.0f } } },
+                { WahProcessor::typeId,        { { "mode", 0.0f }, { "position", 60.0f }, { "q", 7.0f } } },
+                { DistortionProcessor::typeId, { { "model", 1.0f }, { "gain", 42.0f }, { "tight", 120.0f }, { "bass", 1.0f },
+                                                 { "mid", 2.0f }, { "treble", 2.0f }, { "presence", 3.0f }, { "level", -13.5f },
+                                                 { "power", 40.0f }, { "sag", 30.0f } } },
+                { CabinetProcessor::typeId,    { { "model", 1.0f } } },
+                { DelayProcessor::typeId,      { { "mode", 1.0f }, { "time", 360.0f }, { "feedback", 30.0f }, { "mix", 18.0f },
+                                                 { "duck", 10.0f } } },
+                { ReverbProcessor::typeId,     { { "mode", 1.0f }, { "decay", 2.0f }, { "mix", 14.0f } } } } },
+
+            // Авто-wah по атаке на чистом звуке: фанк / ню-метал куплет; B: + фейзер
+            { "Auto Wah Funk", "Showcase",
+              { { CompressorProcessor::typeId, { { "threshold", -34.0f }, { "ratio", 6.0f }, { "attack", 4.0f },
+                                                 { "release", 120.0f }, { "makeup", 10.0f } } },
+                { WahProcessor::typeId,        { { "mode", 1.0f }, { "sens", -42.0f }, { "q", 8.0f } } },
+                { CabinetProcessor::typeId,    { { "model", 4.0f }, { "level", 8.5f } } },
+                { ModulationProcessor::typeId, { { EffectBase::enabledParameterId, 0.0f }, { "mode", 2.0f }, { "rate", 0.6f },
+                                                 { "depth", 70.0f }, { "feedback", 40.0f }, { "mix", 50.0f } },
+                  false, { { EffectBase::enabledParameterId, 1.0f } } },
+                { ReverbProcessor::typeId,     { { "mode", 0.0f }, { "decay", 0.8f }, { "mix", 12.0f } } } } },
+
+            // Лид в терцию по ладу (ми минор, как у Iron Maiden / Opeth); B: + квинта вторым голосом
+            { "Harmony Lead (E minor)", "Showcase",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -58.0f }, { "hold", 40.0f }, { "release", 140.0f } } },
+                { CompressorProcessor::typeId, { { "threshold", -26.0f }, { "ratio", 3.0f }, { "attack", 12.0f }, { "makeup", 4.0f } } },
+                { DistortionProcessor::typeId, { { "model", 2.0f }, { "gain", 38.0f }, { "tight", 100.0f }, { "mid", 4.0f },
+                                                 { "treble", 2.0f }, { "presence", 2.0f }, { "level", -15.0f }, { "power", 30.0f } } },
+                { HarmonizerProcessor::typeId, { { "key", 4.0f }, { "scale", 1.0f }, { "voice1", 6.0f }, { "voice2", 0.0f },
+                                                 { "mix", 70.0f } },
+                  false, { { "voice2", 8.0f }, { "mix", 60.0f } } },
+                { CabinetProcessor::typeId,    { { "model", 2.0f } } },
+                { DelayProcessor::typeId,      { { "mode", 1.0f }, { "time", 400.0f }, { "feedback", 28.0f }, { "mix", 18.0f },
+                                                 { "duck", 10.0f } } },
+                { ReverbProcessor::typeId,     { { "mode", 2.0f }, { "decay", 2.6f }, { "mix", 16.0f } } } } },
+
+            // Чистый с хорусом и пластиной; B: флэнжер
+            { "Chorus Clean", "Showcase",
+              { { CompressorProcessor::typeId, { { "threshold", -30.0f }, { "ratio", 4.0f }, { "attack", 8.0f }, { "makeup", 8.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 2.0f }, { "tone", 70.0f }, { "level", 0.0f } } },
+                { CabinetProcessor::typeId,    { { "model", 3.0f }, { "level", 7.0f } } },
+                { ModulationProcessor::typeId, { { "mode", 0.0f }, { "rate", 0.7f }, { "depth", 55.0f }, { "mix", 60.0f } },
+                  false, { { "mode", 1.0f }, { "rate", 0.25f }, { "depth", 70.0f }, { "feedback", 55.0f } } },
+                { ReverbProcessor::typeId,     { { "mode", 1.0f }, { "decay", 2.4f }, { "mix", 20.0f } } } } },
+
+            // Медленный фейзер на Doom Fuzz (в духе Electric Wizard); B: тремоло-волны
+            { "Phaser Doom", "Showcase",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -60.0f }, { "hold", 60.0f }, { "release", 180.0f } } },
+                { DistortionProcessor::typeId, { { "model", 3.0f }, { "gain", 40.0f }, { "tight", 60.0f }, { "bass", 4.0f },
+                                                 { "mid", -1.0f }, { "level", -6.5f }, { "sag", 40.0f } } },
+                { CabinetProcessor::typeId,    { { "model", 2.0f }, { "distance", 40.0f } } },
+                { ModulationProcessor::typeId, { { "mode", 2.0f }, { "rate", 0.15f }, { "depth", 80.0f }, { "feedback", 50.0f },
+                                                 { "mix", 80.0f } },
+                  false, { { "mode", 3.0f }, { "rate", 3.0f }, { "depth", 60.0f } } },
+                { ReverbProcessor::typeId,     { { "mode", 2.0f }, { "decay", 5.0f }, { "predelay", 40.0f }, { "mix", 20.0f } } } } },
+
+            // Индастриал: флэнжер с сильной обратной связью "реактивный самолёт"
+            { "Jet Flanger Riff", "Showcase",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -50.0f }, { "hold", 15.0f }, { "release", 30.0f } } },
+                { DistortionProcessor::typeId, { { "model", 4.0f }, { "gain", 40.0f }, { "tight", 150.0f }, { "level", -14.0f } } },
+                { CabinetProcessor::typeId,    {} },
+                { ModulationProcessor::typeId, { { "mode", 1.0f }, { "rate", 0.2f }, { "depth", 85.0f }, { "feedback", -75.0f },
+                                                 { "mix", 90.0f } } },
+                { EqProcessor::typeId,         { { "lowcut", 70.0f }, { "mid1Freq", 1000.0f }, { "mid1Gain", 1.5f }, { "highcut", 9000.0f } } } } },
+
+            // Студийный ритм: Modern + оконечник с резонансом, микрофон чуть с края и отодвинут
+            { "Studio Rhythm (mic)", "Showcase",
+              { { NoiseGateProcessor::typeId,  { { "threshold", -50.0f }, { "hold", 12.0f }, { "release", 30.0f } } },
+                { OverdriveProcessor::typeId,  { { "drive", 0.0f }, { "tone", 80.0f }, { "level", 2.0f } } },
+                { DistortionProcessor::typeId, { { "model", 0.0f }, { "gain", 40.0f }, { "tight", 170.0f }, { "bass", 2.0f },
+                                                 { "mid", -4.0f }, { "treble", 2.0f }, { "presence", 3.0f }, { "level", -11.5f },
+                                                 { "power", 50.0f }, { "sag", 25.0f }, { "resonance", 4.0f } } },
+                { CabinetProcessor::typeId,    { { "model", 1.0f }, { "position", 35.0f }, { "distance", 25.0f } } },
+                { EqProcessor::typeId,         { { "lowcut", 80.0f }, { "mid1Freq", 400.0f }, { "mid1Gain", -2.0f }, { "highcut", 9500.0f } } } } },
+
+            // Эмбиент: тремоло + огромный зал
+            { "Tremolo Dream", "Showcase",
+              { { CompressorProcessor::typeId, { { "threshold", -30.0f }, { "ratio", 3.0f }, { "makeup", 6.0f } } },
+                { CabinetProcessor::typeId,    { { "model", 4.0f }, { "level", 10.5f } } },
+                { ModulationProcessor::typeId, { { "mode", 3.0f }, { "rate", 5.0f }, { "depth", 70.0f } } },
+                { DelayProcessor::typeId,      { { "mode", 1.0f }, { "time", 480.0f }, { "feedback", 40.0f }, { "mix", 22.0f },
+                                                 { "mod", 30.0f } } },
+                { ReverbProcessor::typeId,     { { "mode", 2.0f }, { "decay", 7.0f }, { "predelay", 50.0f }, { "mix", 30.0f } } } },
+              { { "threshold", -26.0f }, { "ratio", 2.5f }, { "attack", 20.0f }, { "release", 250.0f }, { "makeup", 6.0f } } },
 
             // ===== Insane ======================================================
             // LFO на Pitch, глитчи и прочее безумие
