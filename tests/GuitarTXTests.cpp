@@ -662,7 +662,7 @@ static void testPresets()
     }
 
     std::printf("Presets: %d factory presets loaded, %d with snapshot B\n", factory, withSnapshots);
-    CHECK(factory >= 74, "expected at least 74 factory presets, got %d", factory);
+    CHECK(factory >= 82, "expected at least 82 factory presets, got %d", factory);
 }
 
 // LFO: Square с размахом -12 - половину цикла исходная высота, половину - октава вниз

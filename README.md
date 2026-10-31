@@ -37,7 +37,7 @@ Standalone гитарный процессор на **JUCE** (Windows). Цель
 - **Рекордер** — кнопка REC: два WAV одной длины — **DI** (сухая гитара, моно) и **Wet** (обработанный звук, стерео), 24-bit или 32-bit float, папка `Документы\GuitarTX\Recordings`. **Re-amp** (меню ▾): DI-файл играет вместо гитары через текущий пресет и записывается заново.
 - **Snapshots A/B** — кнопки A / B рядом с пресетом: два набора ручек и On/Off для одной цепочки (ритм / соло), переключение мгновенное, сохраняются в пресете. ПКМ — скопировать в другой снапшот.
 - **Браузер пресетов** — кнопка Browse: поиск по имени, стилю и тегам, избранное (★), папки, свои теги, импорт/экспорт `.gtxpreset`.
-- **Пресеты** цепочек и настроек: 74 заводских в 10 категориях (Doom, Metal, Nu-Metal, Industrial, Extreme, Alt Rock, Clean & Crunch, **Top Picks**, **Insane**, Utility) + пользовательские (`%APPDATA%\GuitarTX\Presets\*.gtxpreset`).
+- **Пресеты** цепочек и настроек: 82 заводских в 11 категориях (Doom, Metal, Nu-Metal, Industrial, Extreme, Alt Rock, Clean & Crunch, **Top Picks**, **Showcase**, **Insane**, Utility) + пользовательские (`%APPDATA%\GuitarTX\Presets\*.gtxpreset`).
 - Регуляторы Input / Output, индикаторы уровня, автосохранение сессии.
 
 ## Сборка

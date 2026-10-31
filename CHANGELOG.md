@@ -23,6 +23,11 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
   sustain, deep mid scoop), **Tight** (djent: low end cut before clipping, bright attack). Levels are matched
   between models. Factory presets Sludge Fuzz, Drone Wall, Funeral Doom (Doom Fuzz), Djent Tight, Tight Chug
   (Tight), Thrash Rhythm, Scooped 7-String (American), Classic Heavy, Crunch Rhythm (British) use them.
+- **8 Showcase factory presets** (82 in total), each with A/B snapshots: Rectifier Wall (American), Plexi Crunch to
+  Lead (British, overdrive boost on B), Fuzz Cathedral (Doom Fuzz + octave down + 808, Freeze pad on B), Djent Laser
+  (Tight + sub sine, whammy with LFO trill on B), Demon Machine (Chaos and divider in parallel, synced stutter on B),
+  Whammy Riser (octave rise on every attack, random-step LFO on B), Ambient Freeze (clean, octave up in parallel,
+  9 s hall, Freeze on B), Industrial Glitch Rig (Chaos bitcrush + tempo-synced glitch).
 - **LISTEN takes** are saved to `Documents\GuitarTX\Recordings\Listen` (the last 30): listen back, analyze
   again with **File...** (opens this folder), or send a take that was analyzed wrong.
 
@@ -35,6 +40,10 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
   - **stage strip** under it: Input knob | **REC** (time, DI / Wet, menu) | **LOOP** (state, bar progress,
     Undo / Redo; click — looper window) | **DRUMS** (play / stop, tempo, pattern; click — drum window) | Output knob;
   - vector icons, sharp at any screen scale.
+- **Looper, Drums and MIDI windows** redesigned in the same style: sections as cards, round transport buttons,
+  icons; buttons, lists, check boxes and bar sliders look the same everywhere. MIDI Learn buttons are grouped
+  (Presets / Tools / Drums / Looper).
+- The **preset browser** button opens and closes the browser window (highlighted while it is open).
 - **LISTEN with a real guitar**: note detection is tuned on a Karplus-Strong guitar model (power chords, palm
   mutes, ringing open chords, hammer-ons / pull-offs, slides, ±15 ms human timing, noise and hum):
   - palm mutes right after an accented chord are no longer lost (local median threshold instead of the mean);

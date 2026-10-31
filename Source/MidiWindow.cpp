@@ -10,10 +10,6 @@ public:
     Content(MidiController& controllerToUse, juce::AudioDeviceManager& manager, std::function<void()> openSettings)
         : controller(controllerToUse), deviceManager(manager), openAudioSettings(std::move(openSettings))
     {
-        title.setText("MIDI", juce::dontSendNotification);
-        title.setFont(juce::FontOptions(18.0f, juce::Font::bold));
-        addAndMakeVisible(title);
-
         inputsLabel.setFont(juce::FontOptions(13.0f));
         addAndMakeVisible(inputsLabel);
 
@@ -31,6 +27,8 @@ public:
         list.setModel(this);
         list.setRowHeight(26);
         list.setColour(juce::ListBox::backgroundColourId, GuitarTXLookAndFeel::textBox);
+        list.setColour(juce::ListBox::outlineColourId, GuitarTXLookAndFeel::cardLine);
+        list.setOutlineThickness(1);
         addAndMakeVisible(list);
 
         removeButton.onClick = [this]
@@ -60,6 +58,7 @@ public:
         auto setupLearn = [this](juce::TextButton& button, MidiController::Kind kind)
         {
             learnButtons.emplace_back(&button, kind);
+            button.setTooltip("Learn: press the switch for \"" + button.getButtonText() + "\" after clicking");
             button.setColour(juce::TextButton::buttonOnColourId, GuitarTXLookAndFeel::accent);
             button.onClick = [this, kind]
             {
@@ -91,11 +90,20 @@ public:
                      "Program Change N selects preset N+1 in the preset list (factory first, then user).",
                      juce::dontSendNotification);
         hint.setFont(juce::FontOptions(12.0f));
-        hint.setColour(juce::Label::textColourId, juce::Colours::grey);
+        hint.setColour(juce::Label::textColourId, GuitarTXLookAndFeel::mutedText);
         hint.setJustificationType(juce::Justification::topLeft);
         addAndMakeVisible(hint);
 
-        setSize(560, 572);
+        for (auto& [label, text] : std::array<std::pair<juce::Label*, const char*>, 4> {
+                 { { &groupPresets, "PRESETS" }, { &groupTools, "TOOLS" }, { &groupDrums, "DRUMS" }, { &groupLooper, "LOOPER" } } })
+        {
+            label->setText(text, juce::dontSendNotification);
+            label->setFont(juce::FontOptions(11.0f, juce::Font::bold));
+            label->setColour(juce::Label::textColourId, GuitarTXLookAndFeel::mutedText);
+            addAndMakeVisible(*label);
+        }
+
+        setSize(620, 640);
         updateState();
         startTimerHz(10);
     }
@@ -110,58 +118,62 @@ public:
     void paint(juce::Graphics& g) override
     {
         g.fillAll(GuitarTXLookAndFeel::background);
+        GuitarTXLookAndFeel::drawSection(g, inputsCard, "Inputs");
+        GuitarTXLookAndFeel::drawSection(g, mappingsCard, "Mappings");
+        GuitarTXLookAndFeel::drawSection(g, learnCard, "Learn a footswitch", GuitarTXLookAndFeel::accent);
     }
 
     void resized() override
     {
-        auto area = getLocalBounds().reduced(16);
+        auto area = getLocalBounds().reduced(14);
 
-        title.setBounds(area.removeFromTop(28));
-
-        auto inputs = area.removeFromTop(26);
-        settingsButton.setBounds(inputs.removeFromRight(160));
-        inputs.removeFromRight(6);
-        inputsButton.setBounds(inputs.removeFromRight(90));
-        inputsLabel.setBounds(inputs);
-
-        area.removeFromTop(4);
-        lastLabel.setBounds(area.removeFromTop(22));
-        area.removeFromTop(6);
-
-        hint.setBounds(area.removeFromBottom(54));
+        hint.setBounds(area.removeFromBottom(50));
         area.removeFromBottom(8);
 
-        auto learnRow4 = area.removeFromBottom(28);
-        area.removeFromBottom(6);
-        auto learnRow3 = area.removeFromBottom(28);
-        area.removeFromBottom(6);
-        auto learnRow2 = area.removeFromBottom(28);
-        area.removeFromBottom(6);
-        auto learnRow1 = area.removeFromBottom(28);
-        const int w = learnRow1.getWidth() / 3;
-        learnNext.setBounds(learnRow1.removeFromLeft(w).reduced(2, 0));
-        learnPrevious.setBounds(learnRow1.removeFromLeft(w).reduced(2, 0));
-        learnTuner.setBounds(learnRow1.reduced(2, 0));
-        learnRecord.setBounds(learnRow2.removeFromLeft(w).reduced(2, 0));
-        learnSnapshot.setBounds(learnRow2.removeFromLeft(w).reduced(2, 0));
-        learnTap.setBounds(learnRow2.reduced(2, 0));
-        learnDrums.setBounds(learnRow3.removeFromLeft(w).reduced(2, 0));
-        learnListen.setBounds(learnRow3.removeFromLeft(w).reduced(2, 0));
-        cancelButton.setBounds(learnRow3.removeFromRight(w).reduced(2, 0));
-        const int w4 = learnRow4.getWidth() / 4;
-        learnLooper.setBounds(learnRow4.removeFromLeft(w4).reduced(2, 0));
-        learnLooperStop.setBounds(learnRow4.removeFromLeft(w4).reduced(2, 0));
-        learnLooperUndo.setBounds(learnRow4.removeFromLeft(w4).reduced(2, 0));
-        learnLooperClear.setBounds(learnRow4.reduced(2, 0));
-        area.removeFromBottom(6);
+        // Входы: список включённых, меню входов, настройки; последнее сообщение
+        inputsCard = area.removeFromTop(86);
+        area.removeFromTop(10);
+        auto inputs = GuitarTXLookAndFeel::sectionContent(inputsCard);
+        auto inputsRow = inputs.removeFromTop(28);
+        settingsButton.setBounds(inputsRow.removeFromRight(170));
+        inputsRow.removeFromRight(6);
+        inputsButton.setBounds(inputsRow.removeFromRight(92));
+        inputsRow.removeFromRight(10);
+        inputsLabel.setBounds(inputsRow);
+        lastLabel.setBounds(inputs.removeFromTop(22));
 
-        auto buttons = area.removeFromBottom(28);
-        removeButton.setBounds(buttons.removeFromLeft(110).reduced(2, 0));
-        modeButton.setBounds(buttons.removeFromLeft(200).reduced(2, 0));
-        clearButton.setBounds(buttons.removeFromRight(110).reduced(2, 0));
-        area.removeFromBottom(6);
+        // Learn: четыре группы по строке
+        learnCard = area.removeFromBottom(4 * 34 + 38);
+        area.removeFromBottom(10);
+        auto learn = GuitarTXLookAndFeel::sectionContent(learnCard);
+        cancelButton.setBounds(learnCard.withTrimmedRight(12).withTrimmedTop(6).removeFromTop(24).removeFromRight(110));
 
-        list.setBounds(area);
+        auto groupRow = [&learn](juce::Label& label, std::initializer_list<juce::TextButton*> buttons)
+        {
+            auto row = learn.removeFromTop(34).reduced(0, 3);
+            label.setBounds(row.removeFromLeft(78));
+            const int w = row.getWidth() / 4;
+
+            for (auto* button : buttons)
+                button->setBounds(row.removeFromLeft(w).reduced(2, 0));
+        };
+
+        groupRow(groupPresets, { &learnNext, &learnPrevious, &learnSnapshot });
+        groupRow(groupTools,   { &learnTuner, &learnRecord, &learnTap });
+        groupRow(groupDrums,   { &learnDrums, &learnListen });
+        groupRow(groupLooper,  { &learnLooper, &learnLooperStop, &learnLooperUndo, &learnLooperClear });
+
+        // Привязки: список и кнопки под ним
+        mappingsCard = area;
+        auto mappings = GuitarTXLookAndFeel::sectionContent(mappingsCard);
+        auto buttons = mappings.removeFromBottom(30);
+        mappings.removeFromBottom(8);
+        list.setBounds(mappings);
+
+        removeButton.setBounds(buttons.removeFromLeft(100));
+        buttons.removeFromLeft(6);
+        modeButton.setBounds(buttons.removeFromLeft(260));
+        clearButton.setBounds(buttons.removeFromRight(100));
     }
 
 private:
@@ -241,7 +253,9 @@ private:
     juce::AudioDeviceManager& deviceManager;
     std::function<void()> openAudioSettings;
 
-    juce::Label title, inputsLabel, lastLabel, hint;
+    juce::Label inputsLabel, lastLabel, hint;
+    juce::Label groupPresets, groupTools, groupDrums, groupLooper;
+    juce::Rectangle<int> inputsCard, mappingsCard, learnCard;
     juce::TextButton settingsButton { "Audio / MIDI Settings" };
     juce::TextButton inputsButton { juce::String::fromUTF8("Inputs \xe2\x96\xbe") };
 
@@ -271,10 +285,11 @@ private:
     }
     juce::ListBox list;
     juce::TextButton removeButton { "Remove" }, modeButton { "Mode: Toggle" }, clearButton { "Clear all" };
-    juce::TextButton learnNext { "Learn: Next preset" }, learnPrevious { "Learn: Prev preset" },
-                     learnTuner { "Learn: Tuner" }, learnRecord { "Learn: Record" },
-                     learnSnapshot { "Learn: Snapshot A/B" }, learnTap { "Learn: Tap tempo" }, learnDrums { "Learn: Drums play/stop" }, learnListen { "Learn: Drums LISTEN" }, learnLooper { "Learn: Looper" }, learnLooperStop { "Looper stop" },
-                     learnLooperUndo { "Looper undo" }, learnLooperClear { "Looper clear" }, cancelButton { "Cancel learn" };
+    juce::TextButton learnNext { "Next preset" }, learnPrevious { "Prev preset" },
+                     learnTuner { "Tuner" }, learnRecord { "Record" },
+                     learnSnapshot { "Snapshot A/B" }, learnTap { "Tap tempo" }, learnDrums { "Play / stop" },
+                     learnListen { "LISTEN" }, learnLooper { "Rec / play / dub" }, learnLooperStop { "Stop" },
+                     learnLooperUndo { "Undo" }, learnLooperClear { "Clear" }, cancelButton { "Cancel learn" };
 };
 
 //==============================================================================
@@ -287,7 +302,7 @@ MidiWindow::MidiWindow(MidiController& controller, juce::AudioDeviceManager& dev
     setUsingNativeTitleBar(true);
     setContentOwned(content, true);
     setResizable(true, false);
-    setResizeLimits(480, 440, 1200, 1000);
+    setResizeLimits(560, 600, 1200, 1100);
 }
 
 MidiWindow::~MidiWindow() = default;

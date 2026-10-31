@@ -1,5 +1,6 @@
 #include "DrumWindow.h"
 #include "GuitarTXLookAndFeel.h"
+#include "HeaderWidgets.h"
 #include "GlitchProcessor.h"
 
 namespace
@@ -270,7 +271,8 @@ public:
 
         // --- Рифф и генерация
         listenButton.setClickingTogglesState(false);
-        listenButton.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(200, 40, 40));
+        listenButton.setAccentColour(GuitarTXLookAndFeel::recordRed);
+        listenButton.setIconColour(GuitarTXLookAndFeel::recordRed);
         listenButton.setTooltip("LISTEN: play your riff from the downbeat (1-2 bars), stop playing - "
                                 "the tempo and a matching beat are set automatically. Esc cancels");
         listenButton.onClick = [this] { assistant.toggleListen(); updateAssistant(); };
@@ -330,7 +332,6 @@ public:
         setWantsKeyboardFocus(true);
 
         playButton.setClickingTogglesState(true);
-        playButton.setColour(juce::TextButton::buttonOnColourId, GuitarTXLookAndFeel::accent);
         playButton.setTooltip("Play / Stop (Space)");
         playButton.onClick = [this] { drums.setPlaying(playButton.getToggleState()); updateTransport(); };
         addAndMakeVisible(playButton);
@@ -449,7 +450,8 @@ public:
         statusLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
         addAndMakeVisible(statusLabel);
 
-        setSize(1020, 3 * 38 + 26 + DrumPattern::numTracks * rowHeight + 60);
+        // поля 28 + карточки + статус 26 + заголовок дорожек 34
+        setSize(1020, 28 + 3 * (cardHeight + 8) + 26 + 34 + DrumPattern::numTracks * rowHeight);
         refresh();
         startTimerHz(30);
     }
@@ -497,6 +499,20 @@ public:
     {
         g.fillAll(GuitarTXLookAndFeel::background);
 
+        // Карточки разделов: заголовок слева, содержимое справа
+        const std::array<std::pair<juce::Rectangle<int>, const char*>, 3> cards {
+            { { playCard, "Play" }, { patternCard, "Pattern" }, { drummerCard, "Drummer" } } };
+
+        for (const auto& [card, title] : cards)
+        {
+            GuitarTXLookAndFeel::drawSection(g, card, {});
+            g.setColour(juce::String(title) == "Drummer" ? GuitarTXLookAndFeel::recordRed.withAlpha(0.9f)
+                                                         : GuitarTXLookAndFeel::mutedText);
+            g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+            g.drawText(juce::String(title).toUpperCase(), card.withWidth(cardTitleWidth).withTrimmedLeft(14),
+                       juce::Justification::centredLeft, false);
+        }
+
         g.setColour(GuitarTXLookAndFeel::panel);
         g.fillRoundedRectangle(gridArea.expanded(8).toFloat(), 6.0f);
     }
@@ -505,31 +521,41 @@ public:
     {
         auto area = getLocalBounds().reduced(14);
 
-        auto row1 = area.removeFromTop(30);
-        playButton.setBounds(row1.removeFromLeft(90));
-        row1.removeFromLeft(10);
-        tempoSlider.setBounds(row1.removeFromLeft(170));
+        auto cardRow = [&area](juce::Rectangle<int>& card)
+        {
+            card = area.removeFromTop(cardHeight);
+            area.removeFromTop(8);
+            return card.withTrimmedLeft(cardTitleWidth).reduced(0, 8).withTrimmedRight(12);
+        };
+
+        // PLAY: ▶ | темп, Tap | Kit, Level | Fill, New fill
+        auto row1 = cardRow(playCard);
+        playButton.setBounds(row1.removeFromLeft(36).withSizeKeepingCentre(36, 36));
+        row1.removeFromLeft(12);
+        row1 = row1.withSizeKeepingCentre(row1.getWidth(), 30);
+        tempoSlider.setBounds(row1.removeFromLeft(150));
         row1.removeFromLeft(6);
-        tapButton.setBounds(row1.removeFromLeft(60));
+        tapButton.setBounds(row1.removeFromLeft(56));
         row1.removeFromLeft(24);
         kitLabel.setBounds(row1.removeFromLeft(30));
         kitBox.setBounds(row1.removeFromLeft(130));
-        row1.removeFromLeft(24);
+        row1.removeFromLeft(20);
         levelLabel.setBounds(row1.removeFromLeft(42));
         levelSlider.setBounds(row1.removeFromLeft(130));
         row1.removeFromLeft(20);
         fillLabel.setBounds(row1.removeFromLeft(30));
         fillBox.setBounds(row1.removeFromLeft(100));
-        row1.removeFromLeft(4);
-        newFillButton.setBounds(row1.removeFromLeft(74));
+        row1.removeFromLeft(6);
+        newFillButton.setBounds(row1.removeFromLeft(78));
 
-        area.removeFromTop(8);
-        auto row2 = area.removeFromTop(30);
-        prevButton.setBounds(row2.removeFromLeft(30));
+        // PATTERN: ‹ имя › Save Delete Clear | Grid, Steps, Swing
+        auto row2 = cardRow(patternCard);
+        row2 = row2.withSizeKeepingCentre(row2.getWidth(), 30);
+        prevButton.setBounds(row2.removeFromLeft(32));
         row2.removeFromLeft(4);
         patternBox.setBounds(row2.removeFromLeft(220));
         row2.removeFromLeft(4);
-        nextButton.setBounds(row2.removeFromLeft(30));
+        nextButton.setBounds(row2.removeFromLeft(32));
         row2.removeFromLeft(8);
         saveButton.setBounds(row2.removeFromLeft(70));
         row2.removeFromLeft(4);
@@ -546,11 +572,12 @@ public:
         swingLabel.setBounds(row2.removeFromLeft(44));
         swingSlider.setBounds(row2.removeFromLeft(110));
 
-        area.removeFromTop(8);
-        auto row3 = area.removeFromTop(30);
+        // DRUMMER: LISTEN, File, Last DI, FOLLOW | Style, Density | Generate, Vary, RIFF
+        auto row3 = cardRow(drummerCard);
+        row3 = row3.withSizeKeepingCentre(row3.getWidth(), 30);
         listenButton.setBounds(row3.removeFromLeft(110));
         row3.removeFromLeft(4);
-        fileButton.setBounds(row3.removeFromLeft(84));
+        fileButton.setBounds(row3.removeFromLeft(80));
         row3.removeFromLeft(4);
         lastDiButton.setBounds(row3.removeFromLeft(70));
         row3.removeFromLeft(4);
@@ -631,7 +658,7 @@ private:
                                     || (listenState == DrumAssistant::ListenState::waiting && blink), juce::dontSendNotification);
 
         if (listenState == DrumAssistant::ListenState::recording)
-            listenButton.setButtonText(juce::String::fromUTF8("\xe2\x97\x8f ") + juce::String(assistant.getRecordedSeconds(), 1) + " s");
+            listenButton.setText(juce::String(assistant.getRecordedSeconds(), 1) + " s");
 
         followButton.setToggleState(drums.isFollowing() && ! (drums.isWaitingForFirstNote() && ! blink), juce::dontSendNotification);
 
@@ -646,9 +673,9 @@ private:
     void updateAssistant()
     {
         const auto listenState = assistant.getListenState();
-        listenButton.setButtonText(listenState == DrumAssistant::ListenState::idle    ? juce::String::fromUTF8("\xe2\x97\x8f LISTEN")
-                                 : listenState == DrumAssistant::ListenState::waiting ? juce::String("waiting...")
-                                                                                      : listenButton.getButtonText());
+        listenButton.setText(listenState == DrumAssistant::ListenState::idle    ? juce::String("LISTEN")
+                           : listenState == DrumAssistant::ListenState::waiting ? juce::String("waiting...")
+                                                                                : listenButton.getText());
         riffButton.setEnabled(assistant.hasRiff());
         riffButton.setToggleState(assistant.hasRiff() && assistant.useRiff, juce::dontSendNotification);
 
@@ -681,7 +708,7 @@ private:
     {
         const bool playing = drums.isPlaying();
         playButton.setToggleState(playing, juce::dontSendNotification);
-        playButton.setButtonText(playing ? juce::String::fromUTF8("\xe2\x96\xa0 STOP") : juce::String::fromUTF8("\xe2\x96\xb6 PLAY"));
+        playButton.setIcon(playing ? Icons::Id::stop : Icons::Id::play);
     }
 
     void updateStatus()
@@ -980,12 +1007,17 @@ private:
     std::vector<DrumPattern> userPatterns;
     GlitchProcessor::TapTempo tapTempo;
 
-    juce::TextButton playButton, tapButton { "Tap" };
+    IconButton playButton { "Play / Stop (Space)", Icons::Id::play, IconButton::Style::round };
+    juce::TextButton tapButton { "Tap" };
     juce::Slider tempoSlider, levelSlider, swingSlider;
     juce::Label kitLabel, levelLabel, gridLabel, lengthLabel, swingLabel, statusLabel;
     juce::ComboBox kitBox, patternBox, gridBox, lengthBox;
-    juce::TextButton prevButton { "<" }, nextButton { ">" }, saveButton { "Save..." }, deleteButton { "Delete" },
+    IconButton prevButton { "Previous pattern", Icons::Id::previous }, nextButton { "Next pattern", Icons::Id::next };
+    juce::TextButton saveButton { "Save..." }, deleteButton { "Delete" },
                      clearButton { "Clear" };
+
+    static constexpr int cardHeight = 52, cardTitleWidth = 92;
+    juce::Rectangle<int> playCard, patternCard, drummerCard;
 
     StepGrid grid;
     std::array<std::unique_ptr<TrackRow>, DrumPattern::numTracks> rows;
@@ -999,7 +1031,8 @@ private:
     juce::Label fillLabel, styleLabel, densityLabel;
     juce::ComboBox fillBox, styleBox;
     juce::Slider densitySlider;
-    juce::TextButton newFillButton { "New fill" }, listenButton, fileButton { "File..." }, lastDiButton { "Last DI" },
+    IconButton listenButton { "LISTEN", Icons::Id::record };
+    juce::TextButton newFillButton { "New fill" }, fileButton { "File..." }, lastDiButton { "Last DI" },
                      followButton { "FOLLOW" }, generateButton { "Generate" }, varyButton { "Vary" }, riffButton { "RIFF" };
     std::unique_ptr<juce::FileChooser> riffChooser;
 

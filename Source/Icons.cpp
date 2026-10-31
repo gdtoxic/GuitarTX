@@ -124,6 +124,17 @@ namespace
             case Id::next:
                 line(s.stroke, { P(9, 5), P(16, 12), P(9, 19) });
                 break;
+
+            case Id::redo:
+                line(s.stroke, { P(15, 14), P(20, 9), P(15, 4) });
+                s.stroke.startNewSubPath(20, 9);
+                s.stroke.lineTo(9.5f, 9);
+                s.stroke.cubicTo(2.5f, 9, 2.5f, 20, 9.5f, 20);
+                s.stroke.lineTo(13, 20);
+                break;
+
+            case Id::none:
+                break;
         }
 
         return s;

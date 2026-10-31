@@ -1,5 +1,6 @@
 #include "LooperWindow.h"
 #include "GuitarTXLookAndFeel.h"
+#include "HeaderWidgets.h"
 
 namespace
 {
@@ -13,12 +14,12 @@ namespace
 
         switch (state)
         {
-            case S::empty:       return juce::String::fromUTF8("\xe2\x97\x8f REC");
-            case S::armed:       return "waiting for the bar... (cancel)";
-            case S::recording:   return juce::String::fromUTF8("\xe2\x96\xb6 PLAY");
-            case S::playing:     return "+ DUB";
-            case S::overdubbing: return juce::String::fromUTF8("\xe2\x96\xb6 PLAY");
-            case S::stopped:     return juce::String::fromUTF8("\xe2\x96\xb6 PLAY");
+            case S::empty:       return "record";
+            case S::armed:       return "cancel waiting";
+            case S::recording:   return "close the loop and play";
+            case S::playing:     return "overdub";
+            case S::overdubbing: return "stop overdub, play";
+            case S::stopped:     return "play";
         }
 
         return {};
@@ -113,27 +114,24 @@ public:
     void paint(juce::Graphics& g) override
     {
         const auto r = getLocalBounds().toFloat();
-        g.setColour(GuitarTXLookAndFeel::textBox);
+        g.setColour(GuitarTXLookAndFeel::panel);
         g.fillRoundedRectangle(r, 4.0f);
 
         const bool running = state == LooperProcessor::State::playing || state == LooperProcessor::State::overdubbing;
 
         if (running || state == LooperProcessor::State::stopped)
         {
-            g.setColour(LooperWindow::stateColour(state).withAlpha(0.8f));
+            g.setColour(LooperWindow::stateColour(state).withAlpha(running ? 0.9f : 0.45f));
             g.fillRoundedRectangle(r.withWidth(r.getWidth() * (float) position), 4.0f);
         }
 
-        // Деления: такты, если луп по тактам
-        if (bars > 1)
-        {
-            g.setColour(juce::Colours::white.withAlpha(0.35f));
+        // Деления тактов
+        g.setColour(GuitarTXLookAndFeel::card);
 
-            for (int b = 1; b < bars; ++b)
-            {
-                const float x = r.getX() + r.getWidth() * (float) b / (float) bars;
-                g.drawLine(x, r.getY() + 3.0f, x, r.getBottom() - 3.0f, 1.0f);
-            }
+        for (int b = 1; b < bars; ++b)
+        {
+            const float x = r.getX() + r.getWidth() * (float) b / (float) bars;
+            g.fillRect(x - 1.0f, r.getY(), 2.0f, r.getHeight());
         }
     }
 
@@ -156,16 +154,25 @@ public:
         mainButton.onClick = [this] { looper.pressMain(); };
         addAndMakeVisible(mainButton);
 
-        stopButton.onClick  = [this] { looper.stop(); };
-        undoButton.onClick  = [this] { looper.undo(); };
-        redoButton.onClick  = [this] { looper.redo(); };
-        doubleButton.onClick = [this] { looper.doubleLength(); };
-        clearButton.onClick = [this] { looper.clear(); };
-        saveButton.onClick  = [this] { save(); };
+        stopButton.setText("Stop");
+        undoButton.setText("Undo");
+        redoButton.setText("Redo");
+        doubleButton.setText("x2");
+        clearButton.setText("Clear");
+        saveButton.setText("Save WAV");
 
+        stopButton.onClick   = [this] { looper.stop(); };
+        undoButton.onClick   = [this] { looper.undo(); };
+        redoButton.onClick   = [this] { looper.redo(); };
+        doubleButton.onClick = [this] { looper.doubleLength(); };
+        clearButton.onClick  = [this] { looper.clear(); };
+        saveButton.onClick   = [this] { save(); };
+
+        stopButton.setTooltip("Stop (play again with the main button)");
         doubleButton.setTooltip("Double the loop length (layers are merged into the loop)");
         undoButton.setTooltip("Undo the last overdub");
         redoButton.setTooltip("Bring the last overdub back");
+        clearButton.setTooltip("Erase the loop (footswitch: hold 2 s)");
         saveButton.setTooltip("Save the loop to Documents\\GuitarTX\\Recordings\\Loops");
 
         for (auto* b : { &stopButton, &undoButton, &redoButton, &doubleButton, &clearButton, &saveButton })
@@ -178,6 +185,8 @@ public:
         addAndMakeVisible(drumsToggle);
 
         levelLabel.setText("Level", juce::dontSendNotification);
+        levelLabel.setFont(juce::FontOptions(13.0f));
+        levelLabel.setColour(juce::Label::textColourId, GuitarTXLookAndFeel::mutedText);
         levelLabel.setJustificationType(juce::Justification::centredRight);
         addAndMakeVisible(levelLabel);
 
@@ -192,11 +201,19 @@ public:
 
         addAndMakeVisible(progress);
 
-        infoLabel.setFont(juce::FontOptions(13.0f));
-        infoLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
+        stateLabel.setFont(juce::FontOptions(22.0f, juce::Font::bold));
+        addAndMakeVisible(stateLabel);
+
+        metaLabel.setFont(juce::FontOptions(13.0f));
+        metaLabel.setColour(juce::Label::textColourId, GuitarTXLookAndFeel::mutedText);
+        metaLabel.setJustificationType(juce::Justification::centredRight);
+        addAndMakeVisible(metaLabel);
+
+        infoLabel.setFont(juce::FontOptions(12.5f));
+        infoLabel.setColour(juce::Label::textColourId, GuitarTXLookAndFeel::mutedText);
         addAndMakeVisible(infoLabel);
 
-        setSize(560, 196);
+        setSize(660, 268);
         startTimerHz(30);
     }
 
@@ -214,76 +231,106 @@ public:
     void paint(juce::Graphics& g) override
     {
         g.fillAll(GuitarTXLookAndFeel::background);
+        GuitarTXLookAndFeel::drawSection(g, loopCard, "Looper");
+        GuitarTXLookAndFeel::drawSection(g, outputCard, "Output");
     }
 
     void resized() override
     {
         auto area = getLocalBounds().reduced(14);
 
-        auto top = area.removeFromTop(46);
-        mainButton.setBounds(top.removeFromLeft(220));
-        top.removeFromLeft(10);
-        stopButton.setBounds(top.removeFromLeft(70).reduced(0, 6));
-        top.removeFromLeft(6);
-        undoButton.setBounds(top.removeFromLeft(60).reduced(0, 6));
-        top.removeFromLeft(4);
-        redoButton.setBounds(top.removeFromLeft(60).reduced(0, 6));
-        top.removeFromLeft(4);
-        doubleButton.setBounds(top.removeFromLeft(44).reduced(0, 6));
+        outputCard = area.removeFromBottom(76);
+        area.removeFromBottom(10);
+        loopCard = area;
 
-        area.removeFromTop(10);
-        progress.setBounds(area.removeFromTop(22));
-        area.removeFromTop(6);
-        infoLabel.setBounds(area.removeFromTop(20));
-        area.removeFromTop(8);
+        // Лупер: [кнопка] | состояние, длина / полоса / подсказка | транспорт
+        auto loop = GuitarTXLookAndFeel::sectionContent(loopCard);
+        mainButton.setBounds(loop.removeFromLeft(84).withSizeKeepingCentre(76, 76));
+        loop.removeFromLeft(14);
 
-        auto bottom = area.removeFromTop(28);
-        clearButton.setBounds(bottom.removeFromLeft(70));
-        bottom.removeFromLeft(6);
-        saveButton.setBounds(bottom.removeFromLeft(90));
-        bottom.removeFromLeft(10);
-        levelLabel.setBounds(bottom.removeFromLeft(44));
-        levelSlider.setBounds(bottom.removeFromLeft(130));
-        bottom.removeFromLeft(10);
-        drumsToggle.setBounds(bottom);
+        auto top = loop.removeFromTop(30);
+        metaLabel.setBounds(top.removeFromRight(160));
+        stateLabel.setBounds(top);
+        loop.removeFromTop(4);
+        progress.setBounds(loop.removeFromTop(12));
+        loop.removeFromTop(10);
+
+        auto transport = loop.removeFromTop(32);
+        for (auto* b : { &stopButton, &undoButton, &redoButton })
+        {
+            b->setBounds(transport.removeFromLeft(86));
+            transport.removeFromLeft(6);
+        }
+        doubleButton.setBounds(transport.removeFromLeft(56));
+
+        loop.removeFromTop(6);
+        infoLabel.setBounds(loop.removeFromTop(18).withTrimmedLeft(-4));
+
+        // Выход: очистка, сохранение, громкость, барабаны вместе с лупом
+        auto out = GuitarTXLookAndFeel::sectionContent(outputCard).withSizeKeepingCentre(
+            GuitarTXLookAndFeel::sectionContent(outputCard).getWidth(), 32);
+        clearButton.setBounds(out.removeFromLeft(86));
+        out.removeFromLeft(6);
+        saveButton.setBounds(out.removeFromLeft(110));
+        out.removeFromLeft(10);
+        levelLabel.setBounds(out.removeFromLeft(40));
+        out.removeFromLeft(6);
+        levelSlider.setBounds(out.removeFromLeft(120));
+        out.removeFromLeft(14);
+        drumsToggle.setBounds(out);
     }
 
 private:
     void timerCallback() override
     {
+        using S = LooperProcessor::State;
         const auto state = looper.getState();
+        const auto colour = state == S::empty   ? GuitarTXLookAndFeel::recordRed
+                          : state == S::stopped ? juce::Colour(0xff5fae7a)
+                                                : LooperWindow::stateColour(state);
 
-        mainButton.setButtonText(nextAction(state));
-        mainButton.setColour(juce::TextButton::buttonColourId, LooperWindow::stateColour(state));
+        mainButton.setAccentColour(colour);
+        mainButton.setIcon(state == S::empty ? Icons::Id::record : Icons::Id::loop);
+        mainButton.setIconColour(state == S::empty ? GuitarTXLookAndFeel::recordRed : colour);
+        mainButton.setToggleState(state == S::recording || state == S::playing || state == S::overdubbing,
+                                  juce::dontSendNotification);
+        mainButton.setTooltip("Next: " + nextAction(state) + "  (Space)");
 
-        const bool hasLoop = looper.getLengthSeconds() > 0.0 && state != LooperProcessor::State::empty;
-        stopButton.setEnabled(hasLoop || state == LooperProcessor::State::armed);
+        const auto stateText = state == S::empty ? juce::String("Ready") : LooperProcessor::stateName(state);
+        stateLabel.setText(stateText.toUpperCase(), juce::dontSendNotification);
+        stateLabel.setColour(juce::Label::textColourId, state == S::empty ? GuitarTXLookAndFeel::text : colour);
+
+        const bool hasLoop = looper.getLengthSeconds() > 0.0 && state != S::empty;
+        stopButton.setEnabled(hasLoop || state == S::armed);
         undoButton.setEnabled(looper.canUndo());
         redoButton.setEnabled(looper.canRedo());
         doubleButton.setEnabled(hasLoop && looper.getLengthSeconds() * 2.0 <= LooperProcessor::maxSeconds
-                                && (state == LooperProcessor::State::playing || state == LooperProcessor::State::stopped));
-        clearButton.setEnabled(state != LooperProcessor::State::empty);
+                                && (state == S::playing || state == S::stopped));
+        clearButton.setEnabled(state != S::empty);
         saveButton.setEnabled(hasLoop);
 
         progress.set(looper.getPosition(), looper.getBars(), state);
 
-        juce::String info = LooperProcessor::stateName(state);
+        juce::String meta;
 
         if (hasLoop)
         {
-            info << "   " << juce::String(looper.getLengthSeconds(), 2) << " s";
-
             if (looper.getBars() > 0)
-                info << " (" << looper.getBars() << (looper.getBars() == 1 ? " bar)" : " bars)");
+                meta << looper.getBars() << (looper.getBars() == 1 ? " bar   " : " bars   ");
+
+            meta << juce::String(looper.getLengthSeconds(), 2) << " s";
         }
 
+        metaLabel.setText(meta, juce::dontSendNotification);
+
+        juce::String info = "Next: " + nextAction(state);
+
         if (looper.isWaitingForBar())
-            info << "   - waiting for the downbeat";
+            info = "Waiting for the downbeat...";
+        else if (state == S::empty)
+            info = "Space / footswitch: record. With drums playing the loop snaps to bars";
 
-        if (state == LooperProcessor::State::empty)
-            info << "   Space / footswitch: record. With drums playing, the loop snaps to bars";
-
-        if (infoLabel.getText() != info)
+        if (infoLabel.getText() != info && ! savedMessage)
             infoLabel.setText(info, juce::dontSendNotification);
     }
 
@@ -295,20 +342,28 @@ private:
                                                          ".wav", false);
         juce::String error;
 
-        if (looper.saveToFile(file, error))
-            infoLabel.setText("Saved: " + file.getFullPathName(), juce::dontSendNotification);
-        else
-            infoLabel.setText("Save failed: " + error, juce::dontSendNotification);
+        infoLabel.setText(looper.saveToFile(file, error) ? "Saved: " + file.getFullPathName() : "Save failed: " + error,
+                          juce::dontSendNotification);
+
+        // Сообщение держится 4 с, затем снова подсказка
+        savedMessage = true;
+        juce::Component::SafePointer<Content> safeThis(this);
+        juce::Timer::callAfterDelay(4000, [safeThis] { if (safeThis != nullptr) safeThis->savedMessage = false; });
     }
 
     LooperProcessor& looper;
 
-    juce::TextButton mainButton, stopButton { juce::String::fromUTF8("\xe2\x96\xa0 Stop") }, undoButton { "Undo" },
-                     redoButton { "Redo" }, doubleButton { "x2" }, clearButton { "Clear" }, saveButton { "Save WAV" };
+    IconButton mainButton { "Looper", Icons::Id::record, IconButton::Style::round };
+    IconButton stopButton { "Stop", Icons::Id::stop }, undoButton { "Undo", Icons::Id::undo },
+               redoButton { "Redo", Icons::Id::redo }, doubleButton { "x2", Icons::Id::none },
+               clearButton { "Clear", Icons::Id::none },
+               saveButton { "Save WAV", Icons::Id::save };
     juce::ToggleButton drumsToggle;
-    juce::Label levelLabel, infoLabel;
+    juce::Label levelLabel, stateLabel, metaLabel, infoLabel;
     juce::Slider levelSlider;
     LoopProgress progress;
+    juce::Rectangle<int> loopCard, outputCard;
+    bool savedMessage = false;
 };
 
 //==============================================================================

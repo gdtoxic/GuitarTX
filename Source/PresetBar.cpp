@@ -81,7 +81,7 @@ PresetBar::PresetBar(PresetManager& managerToUse)
     prevButton.onClick   = [this] { step(-1); };
     nextButton.onClick   = [this] { step(+1); };
     nameButton->onClick  = [this] { showPresetMenu(); };
-    browseButton.onClick = [this] { showBrowser(); };
+    browseButton.onClick = [this] { toggleBrowser(); };
     saveButton.onClick   = [this] { save(); };
     moreButton.onClick   = [this] { showSaveMenu(); };
 
@@ -137,6 +137,12 @@ void PresetBar::timerCallback()
     // Отслеживаем правки ручек: появилась/пропала звёздочка
     if (manager.isModified() != lastModified)
         updateDisplay();
+
+    // Окно браузера могли закрыть крестиком
+    const bool browserOpen = browser != nullptr && browser->isVisible();
+
+    if (browseButton.getToggleState() != browserOpen)
+        browseButton.setToggleState(browserOpen, juce::dontSendNotification);
 }
 
 //==============================================================================
@@ -247,6 +253,17 @@ void PresetBar::showPresetMenu()
                            if (juce::isPositiveAndNotGreaterThan(result, (int) presets.size()))
                                safeThis->loadPreset(presets[(size_t) result - 1]);
                        });
+}
+
+void PresetBar::toggleBrowser()
+{
+    // Кнопка открывает и закрывает окно браузера
+    if (browser != nullptr && browser->isVisible())
+        browser->setVisible(false);
+    else
+        showBrowser();
+
+    browseButton.setToggleState(browser != nullptr && browser->isVisible(), juce::dontSendNotification);
 }
 
 void PresetBar::showBrowser()

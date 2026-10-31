@@ -106,6 +106,14 @@ void IconButton::paintButton(juce::Graphics& g, bool highlighted, bool down)
     const float iconSize = juce::jmin(18.0f, bounds.getHeight() - 10.0f);
     const auto colour = (customIconColour ? iconColour : textColour).withMultipliedAlpha(alpha);
 
+    if (icon == Icons::Id::none)
+    {
+        g.setColour(textColour.withMultipliedAlpha(alpha));
+        g.setFont(uiFont(13.0f));
+        g.drawText(text, bounds, juce::Justification::centred, false);
+        return;
+    }
+
     if (text.isEmpty())
     {
         Icons::draw(g, icon, bounds.withSizeKeepingCentre(iconSize, iconSize), colour, 1.8f);

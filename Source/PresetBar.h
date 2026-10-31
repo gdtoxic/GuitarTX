@@ -39,6 +39,7 @@ private:
 
     void showPresetMenu();
     void showBrowser();
+    void toggleBrowser();
     void showSaveMenu();
 
     void save();

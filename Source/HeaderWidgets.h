@@ -19,6 +19,7 @@ public:
 
     void setIcon(Icons::Id newIcon);
     void setText(const juce::String& newText);
+    const juce::String& getText() const noexcept { return text; }
 
     // round: цвет кольца и иконки; outlined / flat: подсветка во включённом состоянии
     void setAccentColour(juce::Colour colour);
