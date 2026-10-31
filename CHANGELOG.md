@@ -2,7 +2,7 @@
 
 All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
 
-## [0.5.0] - 2026-10-31
+## [0.4.2] - 2026-10-31
 
 ### Added
 - **Looper** (LOOP button in the header, or a MIDI footswitch), up to 60 s, after the guitar chain (drums are not
