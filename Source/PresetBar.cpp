@@ -8,6 +8,22 @@ class PresetBar::NameDisplay : public juce::Button
 public:
     NameDisplay() : juce::Button("Preset") {}
 
+    std::function<void()> onRightClick;
+
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        rightClick = e.mods.isPopupMenu() && onRightClick != nullptr;
+
+        if (rightClick) onRightClick();
+        else            juce::Button::mouseDown(e);
+    }
+
+    void mouseUp(const juce::MouseEvent& e) override
+    {
+        if (! rightClick)
+            juce::Button::mouseUp(e);
+    }
+
     void set(const juce::String& newTag, const juce::String& newName, bool newModified, bool newEmpty)
     {
         if (newTag == tag && newName == name && newModified == modified && newEmpty == empty)
@@ -26,7 +42,7 @@ public:
 
         g.setColour(GuitarTXLookAndFeel::textBox.brighter(down ? 0.12f : highlighted ? 0.06f : 0.0f));
         g.fillRoundedRectangle(area, 6.0f);
-        g.setColour(juce::Colour(0xff4f5e60));
+        g.setColour(getToggleState() ? GuitarTXLookAndFeel::accent : juce::Colour(0xff4f5e60));
         g.drawRoundedRectangle(area, 6.0f, 1.0f);
 
         area = area.reduced(10.0f, 0.0f);
@@ -64,7 +80,7 @@ public:
 
 private:
     juce::String tag, name;
-    bool modified = false, empty = true;
+    bool modified = false, empty = true, rightClick = false;
 };
 
 //==============================================================================
@@ -73,14 +89,15 @@ PresetBar::PresetBar(PresetManager& managerToUse)
 {
     prevButton.setTooltip("Previous preset");
     nextButton.setTooltip("Next preset");
-    nameButton->setTooltip("Choose preset (favourites, factory by style, your folders)");
+    nameButton->setTooltip("Preset library: open / close. Right-click: quick list");
     browseButton.setTooltip("Preset browser: search, tags, favourites, folders, import / export");
     saveButton.setTooltip("Save changes to the current preset");
     moreButton.setTooltip("Save As / Delete");
 
     prevButton.onClick   = [this] { step(-1); };
     nextButton.onClick   = [this] { step(+1); };
-    nameButton->onClick  = [this] { showPresetMenu(); };
+    nameButton->onClick      = [this] { toggleBrowser(); };
+    nameButton->onRightClick = [this] { showPresetMenu(); };
     browseButton.onClick = [this] { toggleBrowser(); };
     saveButton.onClick   = [this] { save(); };
     moreButton.onClick   = [this] { showSaveMenu(); };
@@ -142,7 +159,10 @@ void PresetBar::timerCallback()
     const bool browserOpen = browser != nullptr && browser->isVisible();
 
     if (browseButton.getToggleState() != browserOpen)
+    {
         browseButton.setToggleState(browserOpen, juce::dontSendNotification);
+        nameButton->setToggleState(browserOpen, juce::dontSendNotification);
+    }
 }
 
 //==============================================================================
@@ -264,6 +284,7 @@ void PresetBar::toggleBrowser()
         showBrowser();
 
     browseButton.setToggleState(browser != nullptr && browser->isVisible(), juce::dontSendNotification);
+    nameButton->setToggleState(browseButton.getToggleState(), juce::dontSendNotification);
 }
 
 void PresetBar::showBrowser()

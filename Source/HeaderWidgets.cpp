@@ -148,28 +148,79 @@ void IconButton::mouseUp(const juce::MouseEvent& e)
 }
 
 //==============================================================================
-void AppLogo::paint(juce::Graphics& g)
+AppLogo::AppLogo() : juce::Button("GuitarTX")
 {
-    auto area = getLocalBounds().toFloat();
-    const auto badge = area.removeFromLeft(36.0f).withSizeKeepingCentre(36.0f, 36.0f);
+    setTooltip("About GuitarTX");
+    onClick = [this] { showAbout(); };
+}
 
-    g.setColour(GuitarTXLookAndFeel::accent);
+void AppLogo::paintButton(juce::Graphics& g, bool highlighted, bool down)
+{
+    const float size = (float) juce::jmin(getWidth(), getHeight());
+    const auto badge = getLocalBounds().toFloat().withSizeKeepingCentre(size, size).reduced(1.0f);
+
+    g.setColour(GuitarTXLookAndFeel::accent.brighter(down ? 0.2f : highlighted ? 0.1f : 0.0f));
     g.fillRoundedRectangle(badge, 8.0f);
-    Icons::draw(g, Icons::Id::logo, badge.reduced(6.0f), GuitarTXLookAndFeel::background, 2.6f);
+    Icons::draw(g, Icons::Id::logo, badge.reduced(size * 0.17f), GuitarTXLookAndFeel::background, 2.6f);
+}
 
-    area.removeFromLeft(11.0f);
-    const auto nameFont = uiFont(21.0f, true);
-    const float nameWidth = juce::GlyphArrangement::getStringWidth(nameFont, "GuitarTX");
+namespace
+{
+    // Содержимое окошка "О программе"
+    class AboutContent : public juce::Component
+    {
+    public:
+        AboutContent()
+        {
+            link.setButtonText("github.com/gdtoxic/GuitarTX");
+            link.setURL(juce::URL(AppLogo::githubUrl));
+            link.setFont(juce::FontOptions(13.0f), false, juce::Justification::centredLeft);
+            link.setColour(juce::HyperlinkButton::textColourId, GuitarTXLookAndFeel::accent);
+            addAndMakeVisible(link);
+            setSize(300, 150);
+        }
 
-    g.setColour(textColour);
-    g.setFont(nameFont);
-    g.drawText("GuitarTX", area.removeFromLeft(nameWidth + 2.0f), juce::Justification::centredLeft, false);
+        void paint(juce::Graphics& g) override
+        {
+            auto area = getLocalBounds().reduced(16, 14);
+            auto top = area.removeFromTop(44);
+            const auto badge = top.removeFromLeft(44).toFloat();
 
-    area.removeFromLeft(7.0f);
-    g.setColour(mutedText);
-    g.setFont(uiFont(11.0f));
-    g.drawText(juce::String("v") + ProjectInfo::versionString, area.withTrimmedTop(6.0f),
-               juce::Justification::centredLeft, false);
+            g.setColour(GuitarTXLookAndFeel::accent);
+            g.fillRoundedRectangle(badge, 9.0f);
+            Icons::draw(g, Icons::Id::logo, badge.reduced(8.0f), GuitarTXLookAndFeel::background, 2.8f);
+
+            top.removeFromLeft(12);
+            g.setColour(textColour);
+            g.setFont(uiFont(22.0f, true));
+            g.drawText("GuitarTX", top.removeFromTop(26), juce::Justification::centredLeft, false);
+            g.setColour(mutedText);
+            g.setFont(uiFont(13.0f));
+            g.drawText(juce::String("Version ") + ProjectInfo::versionString, top, juce::Justification::centredLeft, false);
+
+            area.removeFromTop(10);
+            g.setColour(textColour);
+            g.drawText("Guitar processor in the Doom / Mick Gordon spirit", area.removeFromTop(18),
+                       juce::Justification::centredLeft, false);
+            area.removeFromTop(22);
+            g.setColour(mutedText);
+            g.setFont(uiFont(12.0f));
+            g.drawText("Open source, GNU AGPLv3", area.removeFromTop(18), juce::Justification::centredLeft, false);
+        }
+
+        void resized() override
+        {
+            link.setBounds(16, 92, getWidth() - 32, 20);
+        }
+
+    private:
+        juce::HyperlinkButton link;
+    };
+}
+
+void AppLogo::showAbout()
+{
+    juce::CallOutBox::launchAsynchronously(std::make_unique<AboutContent>(), getScreenBounds(), nullptr);
 }
 
 //==============================================================================
@@ -209,9 +260,9 @@ public:
     {
         auto area = getLocalBounds().toFloat();
 
-        if (highlighted || down)
+        if (highlighted || down || getToggleState())
         {
-            g.setColour(juce::Colours::white.withAlpha(down ? 0.08f : 0.04f));
+            g.setColour(juce::Colours::white.withAlpha(down ? 0.08f : getToggleState() ? 0.07f : 0.04f));
             g.fillRoundedRectangle(area, 6.0f);
         }
 
@@ -288,7 +339,7 @@ StageStrip::StageStrip()
     loopButton.setTooltip("Looper: record / play / overdub. Footswitch: double press - stop, hold 2 s - clear");
     loopButton.onClick = [this] { if (onLoopMain) onLoopMain(); };
 
-    loopInfo->setTooltip("Open the looper window");
+    loopInfo->setTooltip("Looper window: open / close");
     loopInfo->onClick = [this] { if (onLoopOpen) onLoopOpen(); };
 
     undoButton.setText("Undo");
@@ -303,7 +354,7 @@ StageStrip::StageStrip()
     drumsButton.setTooltip("Drums play / stop");
     drumsButton.onClick = [this] { if (onDrumsToggle) onDrumsToggle(); };
 
-    drumsInfo->setTooltip("Open the drum machine");
+    drumsInfo->setTooltip("Drum machine window: open / close");
     drumsInfo->onClick = [this] { if (onDrumsOpen) onDrumsOpen(); };
 
     for (juce::Component* c : { (juce::Component*) &recButton, (juce::Component*) recInfo.get(),
@@ -322,6 +373,12 @@ StageStrip::~StageStrip() = default;
 juce::Component& StageStrip::getRecordMenuTarget() noexcept
 {
     return *recInfo;
+}
+
+void StageStrip::setWindowsOpen(bool looperOpen, bool drumsOpen)
+{
+    loopInfo->setToggleState(looperOpen, juce::dontSendNotification);
+    drumsInfo->setToggleState(drumsOpen, juce::dontSendNotification);
 }
 
 void StageStrip::setRecorder(bool active, const juce::String& detail)
@@ -391,7 +448,7 @@ void StageStrip::paint(juce::Graphics& g)
 void StageStrip::resized()
 {
     auto area = getLocalBounds();
-    constexpr int knobSlot = 78, pedal = 46;
+    constexpr int knobSlot = 84, pedal = 46;
 
     inputSlot  = area.removeFromLeft(knobSlot);
     outputSlot = area.removeFromRight(knobSlot);

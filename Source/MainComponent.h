@@ -81,6 +81,10 @@ private:
     // Полоса сцены (запись / лупер / барабаны) и шапка
     void setupHeader();
 
+    // Кнопки инструментов: открыть / закрыть окно, подсветка открытых
+    void toggleWindow(juce::Component* window, const std::function<void()>& show);
+    void updateWindowButtons();
+
     // Snapshots A/B
     void setupSnapshots();
     void selectSnapshot(int index);
@@ -174,7 +178,7 @@ private:
     int saveTicks = 0;
     bool changingSelection = false;
 
-    static constexpr int windowWidth = 1100, windowHeight = 780;
+    static constexpr int windowWidth = 980, windowHeight = 720;
     int headerBottom = 0;
 
     float inputDisplay  = 0.0f;

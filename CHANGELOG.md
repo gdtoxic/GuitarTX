@@ -32,18 +32,22 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
   again with **File...** (opens this folder), or send a take that was analyzed wrong.
 
 ### Changed
-- **New main window header** (the window has a fixed size now, 1100×780; the title no longer gets cut off and the
-  preset field no longer stretches):
-  - top row: logo and version, presets in the centre — ‹ › and a fixed-width name with the style / folder tag
+- **New main window header** (compact fixed-size window, 980×720; nothing gets cut off and the preset field no
+  longer stretches):
+  - top row: the app icon (click — About: version, GitHub link, license), presets in the centre — ‹ › and a fixed-width name with the style / folder tag
     and the "modified" mark; icon buttons for Browse and Save, Save As / Delete in the ▾ menu, A/B as one switch;
     on the right Tuner, MIDI and Audio settings;
   - **stage strip** under it: Input knob | **REC** (time, DI / Wet, menu) | **LOOP** (state, bar progress,
     Undo / Redo; click — looper window) | **DRUMS** (play / stop, tempo, pattern; click — drum window) | Output knob;
+    the IN / OUT level meters sit next to the knobs, Master is in the MAIN CHAIN row;
+  - **MIDI, LOOP, DRUMS, Tuner and the preset library open and close with the same button** (highlighted while
+    open); **a click on the preset name opens the library** (right-click — the quick list);
   - vector icons, sharp at any screen scale.
 - **Looper, Drums and MIDI windows** redesigned in the same style: sections as cards, round transport buttons,
   icons; buttons, lists, check boxes and bar sliders look the same everywhere. MIDI Learn buttons are grouped
   (Presets / Tools / Drums / Looper).
-- The **preset browser** button opens and closes the browser window (highlighted while it is open).
+- **EQ**: the frequency response graph is back — a full-width strip under the knobs (in the wide window all knobs fit
+  in one row, and the graph used to live in the free space of the last row).
 - **LISTEN with a real guitar**: note detection is tuned on a Karplus-Strong guitar model (power chords, palm
   mutes, ringing open chords, hammer-ons / pull-offs, slides, ±15 ms human timing, noise and hum):
   - palm mutes right after an accented chord are no longer lost (local median threshold instead of the mean);

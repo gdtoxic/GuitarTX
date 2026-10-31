@@ -40,11 +40,17 @@ private:
 };
 
 //==============================================================================
-// Логотип: значок, название и версия
-class AppLogo : public juce::Component
+// Значок программы; по нажатию - окошко "О программе" (версия, GitHub, лицензия)
+class AppLogo : public juce::Button
 {
 public:
-    void paint(juce::Graphics& g) override;
+    AppLogo();
+    void paintButton(juce::Graphics& g, bool highlighted, bool down) override;
+
+    static constexpr const char* githubUrl = "https://github.com/gdtoxic/GuitarTX";
+
+private:
+    void showAbout();
 };
 
 //==============================================================================
@@ -68,6 +74,9 @@ public:
     std::function<void()> onDrumsToggle, onDrumsOpen;
 
     juce::Component& getRecordMenuTarget() noexcept;
+
+    // Открыты ли окна лупера / барабанов (подсветка разделов)
+    void setWindowsOpen(bool looperOpen, bool drumsOpen);
 
     juce::Rectangle<int> getInputSlot() const noexcept  { return inputSlot; }
     juce::Rectangle<int> getOutputSlot() const noexcept { return outputSlot; }

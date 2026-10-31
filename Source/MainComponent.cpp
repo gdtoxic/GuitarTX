@@ -136,6 +136,9 @@ MainComponent::MainComponent()
     startTimerHz(30);
 
     // setSize в конце, когда все компоненты уже созданы
+    inputMeter.setVertical(true);
+    outputMeter.setVertical(true);
+
     // Размер окна фиксированный: раскладка рассчитана под него
     setSize(windowWidth, windowHeight);
 }
@@ -486,7 +489,7 @@ void MainComponent::setupMidi()
     EffectPanel::setMidiLearnHost(this);
 
     midiButton.setText("MIDI");
-    midiButton.onClick = [this] { showMidiWindow(); };
+    midiButton.onClick = [this] { toggleWindow(midiWindow.get(), [this] { showMidiWindow(); }); };
     addAndMakeVisible(midiButton);
 }
 
@@ -583,9 +586,9 @@ void MainComponent::setupHeader()
     stage.onLoopMain    = [this] { audioEngine.getLooper().pressMain(); };
     stage.onLoopUndo    = [this] { audioEngine.getLooper().undo(); };
     stage.onLoopRedo    = [this] { audioEngine.getLooper().redo(); };
-    stage.onLoopOpen    = [this] { showLooperWindow(); };
+    stage.onLoopOpen    = [this] { toggleWindow(looperWindow.get(), [this] { showLooperWindow(); }); };
     stage.onDrumsToggle = [this] { toggleDrums(); };
-    stage.onDrumsOpen   = [this] { showDrumWindow(); };
+    stage.onDrumsOpen   = [this] { toggleWindow(drumWindow.get(), [this] { showDrumWindow(); }); };
 
     // A / B - один переключатель из двух половин
     snapshotButtons[0].setConnectedEdges(juce::Button::ConnectedOnRight);
@@ -864,6 +867,25 @@ void MainComponent::saveMidiSettings()
     auto xml = midi.createXml();
     xml->setAttribute("inputsInitialised", true);
     settings.saveXml("midi", xml.get());
+}
+
+void MainComponent::toggleWindow(juce::Component* window, const std::function<void()>& show)
+{
+    // Кнопка инструмента открывает и закрывает его окно
+    if (window != nullptr && window->isVisible())
+        window->setVisible(false);
+    else
+        show();
+
+    updateWindowButtons();
+}
+
+void MainComponent::updateWindowButtons()
+{
+    auto isOpen = [](const juce::Component* window) { return window != nullptr && window->isVisible(); };
+
+    midiButton.setToggleState(isOpen(midiWindow.get()), juce::dontSendNotification);
+    stage.setWindowsOpen(isOpen(looperWindow.get()), isOpen(drumWindow.get()));
 }
 
 void MainComponent::showMidiWindow()
@@ -1175,6 +1197,9 @@ void MainComponent::timerCallback()
     if (audioEngine.getRecorder().isRecording() || audioEngine.getRecorder().isReamping())
         updateRecordButton();
 
+    // Окна могли закрыть крестиком
+    updateWindowButtons();
+
     if (transientTicks > 0 && --transientTicks == 0 && ! midi.isLearning())
     {
         transientStatus.clear();
@@ -1208,15 +1233,15 @@ void MainComponent::resized()
     auto area = getLocalBounds().reduced(20, 12);
 
     // Строка статуса внизу
-    statusLabel.setBounds(area.removeFromBottom(22));
+    statusLabel.setBounds(area.removeFromBottom(20));
 
-    // Шапка: логотип | пресет + A/B (по центру) | тюнер, MIDI, настройки
-    auto header = area.removeFromTop(64);
-    headerBottom = header.getBottom();
+    // Шапка: значок | пресет + A/B (по центру) | тюнер, MIDI, настройки
+    auto header = area.removeFromTop(56);
+    headerBottom = header.getBottom() + 1;
 
-    logo.setBounds(header.removeFromLeft(200).reduced(0, 12));
+    logo.setBounds(header.removeFromLeft(38).withSizeKeepingCentre(38, 38));
 
-    auto tools = header.removeFromRight(230);
+    auto tools = header.removeFromRight(228);
     audioSettingsButton.setBounds(tools.removeFromRight(40).withSizeKeepingCentre(40, 38));
     tools.removeFromRight(6);
     midiButton.setBounds(tools.removeFromRight(84).withSizeKeepingCentre(84, 38));
@@ -1230,49 +1255,44 @@ void MainComponent::resized()
     snapshotButtons[0].setBounds(centre.removeFromLeft(36));
     snapshotButtons[1].setBounds(centre.removeFromLeft(36));
 
-    area.removeFromTop(12);
+    area.removeFromTop(10);
 
     // Тюнер закрывает всё ниже шапки
     tuner.setBounds(area);
 
-    // Сцена: IN | REC | LOOP | DRUMS | OUT
-    stage.setBounds(area.removeFromTop(86));
+    // Сцена: IN | REC | LOOP | DRUMS | OUT; у ручек - вертикальные индикаторы уровня
+    stage.setBounds(area.removeFromTop(82));
 
-    auto placeKnob = [this](juce::Rectangle<int> slot, juce::Label& label, juce::Slider& knob)
+    auto placeKnob = [this](juce::Rectangle<int> slot, juce::Label& label, juce::Slider& knob, LevelMeter& meter, bool meterLeft)
     {
-        slot = slot.translated(stage.getX(), stage.getY()).reduced(6, 6);
+        slot = slot.translated(stage.getX(), stage.getY()).reduced(6, 8);
+        auto meterArea = meterLeft ? slot.removeFromLeft(6) : slot.removeFromRight(6);
+        meter.setBounds(meterArea.reduced(0, 2));
         label.setBounds(slot.removeFromTop(12));
         knob.setBounds(slot);
     };
 
-    placeKnob(stage.getInputSlot(),  inputLabel,  inputKnob);
-    placeKnob(stage.getOutputSlot(), outputLabel, outputKnob);
+    placeKnob(stage.getInputSlot(),  inputLabel,  inputKnob,  inputMeter,  false);
+    placeKnob(stage.getOutputSlot(), outputLabel, outputKnob, outputMeter, true);
 
-    area.removeFromTop(8);
+    area.removeFromTop(10);
 
-    // Индикаторы IN / OUT и Master
-    auto meterRow = area.removeFromTop(22);
-    masterButton.setBounds(meterRow.removeFromRight(190));
-    meterRow.removeFromRight(12);
-    inputMeter.setBounds(meterRow.removeFromLeft((meterRow.getWidth() - 8) / 2));
-    meterRow.removeFromLeft(8);
-    outputMeter.setBounds(meterRow);
-
-    area.removeFromTop(12);
-
-    // Основная цепочка
-    auto mainTitle = area.removeFromTop(18);
-    mainLaneLabel.setBounds(mainTitle.removeFromLeft(140));
+    // Основная цепочка: подпись, подсказка, Master справа
+    auto mainTitle = area.removeFromTop(20);
+    masterButton.setBounds(mainTitle.removeFromRight(170));
+    mainTitle.removeFromRight(10);
+    mainLaneLabel.setBounds(mainTitle.removeFromLeft(110));
     hintLabel.setBounds(mainTitle);
+    area.removeFromTop(2);
     mainRack.setBounds(area.removeFromTop(96));
 
-    area.removeFromTop(8);
+    area.removeFromTop(6);
 
     // Параллельная ветка
     parallelLaneLabel.setBounds(area.removeFromTop(18));
     parallelRack.setBounds(area.removeFromTop(106));
 
-    area.removeFromTop(12);
+    area.removeFromTop(10);
 
     // Параметры выбранной педали: целиком, а если не помещается - с прокруткой
     if (panel != nullptr)

@@ -6,6 +6,7 @@
 #include "ToneMatchProcessor.h"
 #include "EqProcessor.h"
 #include "GlitchProcessor.h"
+#include "HeaderWidgets.h"
 
 // Куда панель отправляет правый клик по ручке (MIDI Learn).
 // parameterId пустой - вкл/выкл самой педали (футсвитч).
@@ -53,7 +54,7 @@ protected:
     // Раскладка ручек (для наследников с собственными элементами)
     static constexpr int titleHeight  = 30;
     static constexpr int knobHeight   = 118;   // подпись + ручка + значение
-    static constexpr int knobMinWidth = 72;
+    static constexpr int knobMinWidth = 70;
     static constexpr int knobMaxWidth = 96;
 
     // Сколько ручек помещается в ряд при текущей ширине
@@ -142,7 +143,14 @@ public:
 
     void resized() override;
 
+protected:
+    // График АЧХ - полосой под ручками на всю ширину
+    int  getExtraHeight() const override { return curveHeight; }
+    void layoutExtra(juce::Rectangle<int> area) override;
+
 private:
+    static constexpr int curveHeight = 96;
+
     class CurveView;
 
     void showCurveMenu();
@@ -151,7 +159,9 @@ private:
 
     EqProcessor& eq;
     std::unique_ptr<CurveView> curve;
-    juce::TextButton prevCurveButton { "<" }, curveButton, nextCurveButton { ">" };
+    IconButton prevCurveButton { "Previous EQ curve", Icons::Id::previous };
+    juce::TextButton curveButton;
+    IconButton nextCurveButton { "Next EQ curve", Icons::Id::next };
     int lastCurveIndex = 0;   // от неё шагают стрелки, если ручки уже покрутили (Custom)
 };
 

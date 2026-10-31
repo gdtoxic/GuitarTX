@@ -723,23 +723,11 @@ void EqPanel::resized()
     row.removeFromLeft(4);
     curveButton.setBounds(row);
 
-    // Повторяем раскладку базового класса, чтобы найти свободное место в последнем ряду
-    auto area = getLocalBounds().reduced(12, 8);
-    area.removeFromTop(titleHeight);
+}
 
-    const int perRow    = getKnobsPerRow(area.getWidth() + 24);
-    const int knobWidth = juce::jlimit(knobMinWidth, knobMaxWidth, area.getWidth() / perRow);
-    const int count     = getNumControls();
-    const int rows      = (count + perRow - 1) / perRow;
-    const int lastRow   = count - (rows - 1) * perRow;
-
-    auto free = juce::Rectangle<int>(area.getX() + lastRow * knobWidth + 8,
-                                     area.getY() + (rows - 1) * knobHeight,
-                                     area.getRight() - (area.getX() + lastRow * knobWidth + 8),
-                                     knobHeight).reduced(0, 6);
-
-    curve->setVisible(free.getWidth() >= 160);
-    curve->setBounds(free);
+void EqPanel::layoutExtra(juce::Rectangle<int> area)
+{
+    curve->setBounds(area.reduced(2, 4));
 }
 
 //==============================================================================

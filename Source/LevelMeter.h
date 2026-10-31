@@ -8,6 +8,9 @@ class LevelMeter : public juce::Component
 public:
     explicit LevelMeter(const juce::String& meterName) : name(meterName) {}
 
+    // Вертикальная тонкая полоса без подписи (рядом с ручкой в полосе сцены)
+    void setVertical(bool shouldBeVertical) { vertical = shouldBeVertical; repaint(); }
+
     // linearLevel: 0..1+ (линейная амплитуда)
     void setLevel(float linearLevel)
     {
@@ -22,6 +25,20 @@ public:
     void paint(juce::Graphics& g) override
     {
         auto bounds = getLocalBounds().toFloat();
+
+        if (vertical)
+        {
+            g.setColour(juce::Colour::fromRGB(38, 42, 47));
+            g.fillRoundedRectangle(bounds, 2.0f);
+
+            const float db = juce::Decibels::gainToDecibels(level, -60.0f);
+            const float proportion = juce::jlimit(0.0f, 1.0f, juce::jmap(db, -60.0f, 0.0f, 0.0f, 1.0f));
+            const auto colour = db > -3.0f ? juce::Colours::red : db > -12.0f ? juce::Colours::orange : juce::Colours::limegreen;
+
+            g.setColour(colour);
+            g.fillRoundedRectangle(bounds.withTop(bounds.getBottom() - bounds.getHeight() * proportion), 2.0f);
+            return;
+        }
 
         g.setColour(juce::Colour::fromRGB(15, 16, 18));
         g.fillRoundedRectangle(bounds, 4.0f);
@@ -48,4 +65,5 @@ public:
 private:
     juce::String name;
     float level = 0.0f;
+    bool vertical = false;
 };
