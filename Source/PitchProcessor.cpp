@@ -74,6 +74,7 @@ void PitchProcessor::prepareEffect(double newSampleRate, int newMaxBlockSize)
 {
     sampleRate   = newSampleRate;
     maxBlockSize = juce::jmax(1, newMaxBlockSize);
+    toneFilter.setRampLength(Biquad::rampFor(sampleRate));
 
     shifter.prepare(sampleRate, maxBlockSize);
 

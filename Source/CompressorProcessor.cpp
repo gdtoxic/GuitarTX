@@ -62,17 +62,23 @@ juce::String CompressorProcessor::getStatusText() const
 void CompressorProcessor::prepareEffect(double newSampleRate, int)
 {
     sampleRate = newSampleRate;
+    holdSamples = juce::roundToInt(0.012 * sampleRate);
     mixSmoothed.reset(sampleRate, 0.02);
     makeupSmoothed.reset(sampleRate, 0.02);
+    thresholdSmoothed.reset(sampleRate, 0.03);
+    ratioSmoothed.reset(sampleRate, 0.03);
     resetEffect();
 }
 
 void CompressorProcessor::resetEffect()
 {
-    envelopeDb = -120.0f;
+    envelopeDb = heldDb = -120.0f;
+    holdCounter = 0;
     displayReduction.store(0.0f);
     mixSmoothed.setCurrentAndTargetValue(mixPercent.load() * 0.01f);
     makeupSmoothed.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(makeupDb.load()));
+    thresholdSmoothed.setCurrentAndTargetValue(thresholdDb.load());
+    ratioSmoothed.setCurrentAndTargetValue(juce::jmax(1.0f, ratio.load()));
 }
 
 void CompressorProcessor::processEffect(juce::AudioBuffer<float>& buffer)
@@ -83,13 +89,13 @@ void CompressorProcessor::processEffect(juce::AudioBuffer<float>& buffer)
     if (numChannels < 1 || numSamples < 1)
         return;
 
-    const float threshold = thresholdDb.load();
-    const float ratioValue = juce::jmax(1.0f, ratio.load());
     const float attack  = timeCoefficient(attackMs.load(), sampleRate);
     const float release = timeCoefficient(releaseMs.load(), sampleRate);
 
     mixSmoothed.setTargetValue(mixPercent.load() * 0.01f);
     makeupSmoothed.setTargetValue(juce::Decibels::decibelsToGain(makeupDb.load()));
+    thresholdSmoothed.setTargetValue(thresholdDb.load());
+    ratioSmoothed.setTargetValue(juce::jmax(1.0f, ratio.load()));
 
     auto* const* data = buffer.getArrayOfWritePointers();
     float maxReduction = 0.0f;
@@ -102,10 +108,25 @@ void CompressorProcessor::processEffect(juce::AudioBuffer<float>& buffer)
             peak = juce::jmax(peak, std::abs(data[ch][i]));
 
         const float levelDb = juce::Decibels::gainToDecibels(peak, -120.0f);
-        const float coef = levelDb > envelopeDb ? attack : release;
-        envelopeDb = levelDb + coef * (envelopeDb - levelDb);
 
-        const float reduction = reductionFor(envelopeDb, threshold, ratioValue);
+        if (levelDb >= heldDb)
+        {
+            heldDb = levelDb;
+            holdCounter = holdSamples;
+        }
+        else if (holdCounter > 0)
+        {
+            --holdCounter;
+        }
+        else
+        {
+            heldDb = levelDb;
+        }
+
+        const float coef = heldDb > envelopeDb ? attack : release;
+        envelopeDb = heldDb + coef * (envelopeDb - heldDb);
+
+        const float reduction = reductionFor(envelopeDb, thresholdSmoothed.getNextValue(), ratioSmoothed.getNextValue());
         maxReduction = juce::jmax(maxReduction, reduction);
 
         const float wet = juce::Decibels::decibelsToGain(-reduction) * makeupSmoothed.getNextValue();

@@ -49,5 +49,5 @@ private:
 
     // Состояние TPT-фильтра (state variable) по каналам
     std::array<float, maxChannels> ic1 {}, ic2 {};
-    juce::SmoothedValue<float> mixSmoothed;
+    juce::SmoothedValue<float> mixSmoothed, dampingSmoothed;   // демпфирование SVF = 1 / Q
 };

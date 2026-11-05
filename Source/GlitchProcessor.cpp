@@ -135,6 +135,7 @@ bool GlitchProcessor::hasSpillover() const
 void GlitchProcessor::prepareEffect(double newSampleRate, int maxBlockSize)
 {
     sampleRate  = newSampleRate;
+    toneFilter[0].setRampLength(Biquad::rampFor(sampleRate));
     fadeSamples = juce::jmax(8, juce::roundToInt(edgeSeconds * sampleRate));
 
     for (int ch = 0; ch < maxChannels; ++ch)

@@ -30,6 +30,7 @@
 #include "ListenProcessor.h"
 #include "LooperProcessor.h"
 #include "GlobalTempo.h"
+#include "EffectRegistry.h"
 #include "CompressorProcessor.h"
 #include "ModulationProcessor.h"
 #include "WahProcessor.h"
@@ -2597,6 +2598,27 @@ static void testNewPedals()
         const float hz = detector.detect().frequency;
         std::printf("Harmonizer: A3 -> %.1f Hz (expected 261.6), detected note %d\n", hz, harmonizer.getDetectedNote());
         CHECK(std::abs(1200.0f * std::log2(hz / 261.63f)) < 25.0f && harmonizer.getDetectedNote() == 57, "harmonizer third up");
+
+        // Низкие ноты drop-строя и смена ноты: A1 (55 Гц) -> E2 (82 Гц) - детектор ведёт обе, без октавных ошибок
+        auto tone = [sr](double hz, double seconds)
+        {
+            std::vector<float> v((size_t) (seconds * sr) / 256 * 256);
+            for (size_t i = 0; i < v.size(); ++i)
+                for (int h = 1; h <= 6; ++h)
+                    v[i] += (float) (0.3 / h * std::sin(2.0 * juce::MathConstants<double>::pi * hz * h * (double) i / sr));
+            return v;
+        };
+
+        HarmonizerProcessor low;
+        runEffect(low, tone(55.0, 0.6), { { "voice1", 6.0f }, { "mix", 100.0f } });
+        const int lowNote = low.getDetectedNote();
+        auto two = tone(55.0, 0.6);
+        const auto e2 = tone(82.41, 0.6);
+        two.insert(two.end(), e2.begin(), e2.end());
+        HarmonizerProcessor change;
+        runEffect(change, two, { { "voice1", 6.0f }, { "mix", 100.0f } });
+        std::printf("Harmonizer: A1 -> note %d (33), A1 then E2 -> note %d (40)\n", lowNote, change.getDetectedNote());
+        CHECK(lowNote == 33 && change.getDetectedNote() == 40, "harmonizer low notes");
     }
 
     // 5. Кабинет: позиция микрофона темнее к краю, расстояние убирает низ; IR B смешивается с моделью
@@ -2681,6 +2703,264 @@ static void testNewPedals()
     }
 }
 
+//==============================================================================
+// Стресс всех эффектов: крайние значения каждого параметра и "кручение ручек" во время игры.
+// Ловит NaN / Inf, перегруз, щелчки (одиночные выбросы второй разности) и всплески времени обработки
+struct StressResult
+{
+    bool finite = true;
+    float peak = 0.0f;
+    double clickRatio = 0.0;   // макс. |d2| к локальному RMS(d2)
+    double clickAt = 0.0;      // секунда
+    double avgBlockUs = 0.0, maxBlockUs = 0.0;
+};
+
+static StressResult stressRun(EffectBase& effect, const std::vector<float>& input, int block, bool automate, juce::int64 seed,
+                              std::vector<double>* blockTimes = nullptr)
+{
+    const double sr = 48000.0;
+    effect.setPlayConfigDetails(2, 2, sr, block);
+    effect.prepareToPlay(sr, block);
+
+    juce::AudioBuffer<float> buf(2, block);
+    juce::MidiBuffer midi;
+    juce::Random random(seed);
+    std::vector<float> out(input.size(), 0.0f);
+    auto& params = effect.getParameters();
+    StressResult r;
+    double total = 0.0;
+    int blocks = 0;
+
+    for (size_t start = 0; start + (size_t) block <= input.size(); start += (size_t) block)
+    {
+        // Каждые ~50 мс одна случайная ручка плавно не двигается, а прыгает - как резкий поворот или MIDI
+        if (automate && blocks % juce::jmax(1, 2400 / block) == 0 && ! params.isEmpty())
+        {
+            auto* p = params[random.nextInt(params.size())];
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(p))
+                if (ranged->getParameterID() != EffectBase::enabledParameterId)
+                    ranged->setValueNotifyingHost(random.nextFloat());
+        }
+
+        for (int k = 0; k < block; ++k)
+            for (int ch = 0; ch < 2; ++ch)
+                buf.setSample(ch, k, input[start + (size_t) k]);
+
+        const auto t0 = juce::Time::getHighResolutionTicks();
+        effect.processBlock(buf, midi);
+        const double us = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - t0) * 1.0e6;
+        total += us;
+        r.maxBlockUs = std::max(r.maxBlockUs, us);
+        if (blockTimes != nullptr)
+            blockTimes->push_back(us);
+        ++blocks;
+
+        for (int k = 0; k < block; ++k)
+        {
+            const float v = buf.getSample(0, k);
+            r.finite = r.finite && std::isfinite(v);
+            r.peak = std::max(r.peak, std::abs(v));
+            out[start + (size_t) k] = std::isfinite(v) ? v : 0.0f;
+        }
+    }
+
+    r.avgBlockUs = total / juce::jmax(1, blocks);
+
+    // Щелчок: |d2| много больше, чем RMS(d2) вокруг (окно 20 мс), и не тише -40 дБ
+    std::vector<double> d2(out.size(), 0.0);
+    for (size_t i = 2; i < out.size(); ++i)
+        d2[i] = (double) out[i] - 2.0 * out[i - 1] + out[i - 2];
+
+    const size_t window = 960;
+    double sum = 0.0;
+    std::vector<double> prefix(d2.size() + 1, 0.0);
+    for (size_t i = 0; i < d2.size(); ++i) prefix[i + 1] = prefix[i] + d2[i] * d2[i];
+    juce::ignoreUnused(sum);
+
+    for (size_t i = window + 4800; i + window < d2.size(); ++i)
+    {
+        const double rms = std::sqrt((prefix[i + window] - prefix[i - window]) / (2.0 * window)) + 1.0e-7;
+        const double ratio = std::abs(d2[i]) / rms;
+
+        if (std::abs(d2[i]) > 0.01 && ratio > r.clickRatio)
+        {
+            r.clickRatio = ratio;
+            r.clickAt = (double) i / sr;
+        }
+    }
+
+    return r;
+}
+
+// Плавное "кручение" одного параметра от минимума к максимуму шагами 1/127 (как MIDI CC / экспрессия)
+// toggle = false: плавный проход min -> max; true: резкие прыжки 15 % <-> 85 % каждые 100 мс (как MIDI / снапшот)
+static StressResult sweepRun(EffectBase& effect, const juce::String& parameterId, const std::vector<float>& input, int block,
+                             bool toggle = false)
+{
+    const double sr = 48000.0;
+    effect.setPlayConfigDetails(2, 2, sr, block);
+    effect.prepareToPlay(sr, block);
+    auto* parameter = effect.getValueTreeState().getParameter(parameterId);
+
+    juce::AudioBuffer<float> buf(2, block);
+    juce::MidiBuffer midi;
+    std::vector<float> out(input.size(), 0.0f);
+    StressResult r;
+    const size_t blocks = input.size() / (size_t) block;
+
+    for (size_t b = 0; b < blocks; ++b)
+    {
+        const float position = toggle ? ((b / (size_t) juce::jmax(1, 4800 / block)) % 2 == 1 ? 0.85f : 0.15f)
+                                      : juce::jlimit(0.0f, 1.0f, (float) b / (float) (blocks * 3 / 4));
+        parameter->setValueNotifyingHost(std::round(position * 127.0f) / 127.0f);
+
+        for (int k = 0; k < block; ++k)
+            for (int ch = 0; ch < 2; ++ch)
+                buf.setSample(ch, k, input[b * (size_t) block + (size_t) k]);
+
+        effect.processBlock(buf, midi);
+
+        for (int k = 0; k < block; ++k)
+        {
+            const float v = buf.getSample(0, k);
+            r.finite = r.finite && std::isfinite(v);
+            r.peak = std::max(r.peak, std::abs(v));
+            out[b * (size_t) block + (size_t) k] = std::isfinite(v) ? v : 0.0f;
+        }
+    }
+
+    std::vector<double> prefix(out.size() + 1, 0.0), d2(out.size(), 0.0);
+    for (size_t i = 2; i < out.size(); ++i) d2[i] = (double) out[i] - 2.0 * out[i - 1] + out[i - 2];
+    for (size_t i = 0; i < d2.size(); ++i) prefix[i + 1] = prefix[i] + d2[i] * d2[i];
+
+    const size_t window = 960;
+    for (size_t i = window + 4800; i + window < d2.size(); ++i)
+    {
+        const double rms = std::sqrt((prefix[i + window] - prefix[i - window]) / (2.0 * window)) + 1.0e-7;
+        if (std::abs(d2[i]) > 0.005 && std::abs(d2[i]) / rms > r.clickRatio)
+        {
+            r.clickRatio = std::abs(d2[i]) / rms;
+            r.clickAt = (double) i / sr;
+        }
+    }
+
+    return r;
+}
+
+static void testStressAllEffects()
+{
+    const double sr = 48000.0;
+
+    // Живой рифф (Karplus-Strong), пик -6 дБ, плюс тишина (хвосты, денормалы)
+    auto riff = synthLiveRiff(120.0, 4, "X.xxX.xhx.xxC--.", 3, 10.0, 0.002f, 77).audio;
+    riff.resize(riff.size() + (size_t) sr, 0.0f);
+    float inPeak = 0.0f;
+    for (auto v : riff) inPeak = std::max(inPeak, std::abs(v));
+    for (auto& v : riff) v *= 0.5f / inPeak;
+
+    std::printf("\nStress: default / random knob jumps (peak dB, click ratio) | CPU avg / worst-of-best max us, block 64 (budget 1333)\n");
+
+    for (const auto& descriptor : EffectRegistry::getAll())
+    {
+        auto base = descriptor.create();
+        const auto reference = stressRun(*base, riff, 256, false, 1);
+
+        auto jumpy = descriptor.create();
+        const auto jumps = stressRun(*jumpy, riff, 256, true, 5);
+
+        // Один и тот же прогон 5 раз: для каждого блока - лучшее время (шум планировщика отсеивается),
+        // худший блок из этих лучших - настоящий пик нагрузки эффекта
+        double avg = 1.0e9;
+        std::vector<double> bestPerBlock;
+        for (int rep = 0; rep < 5; ++rep)
+        {
+            auto timed = descriptor.create();
+            std::vector<double> times;
+            const auto t = stressRun(*timed, riff, 64, true, 7, &times);
+            avg = std::min(avg, t.avgBlockUs);
+
+            if (bestPerBlock.empty())
+                bestPerBlock = times;
+            else
+                for (size_t b = 0; b < std::min(times.size(), bestPerBlock.size()); ++b)
+                    bestPerBlock[b] = std::min(bestPerBlock[b], times[b]);
+        }
+        const double worst = bestPerBlock.empty() ? 0.0 : *std::max_element(bestPerBlock.begin(), bestPerBlock.end());
+
+        std::printf("  %-11s ref %+5.1f dB click %5.1f | jumps %+5.1f dB click %5.1f @%.2fs | cpu %6.1f / %7.1f us%s\n",
+                    descriptor.typeId.toRawUTF8(), 20.0 * std::log10(reference.peak + 1e-9), reference.clickRatio,
+                    20.0 * std::log10(jumps.peak + 1e-9), jumps.clickRatio, jumps.clickAt, avg, worst,
+                    reference.finite && jumps.finite ? "" : "  NaN!");
+        CHECK(reference.finite && jumps.finite, "%s: NaN / Inf", descriptor.typeId.toRawUTF8());
+
+        // Каждый параметр: плавный проход min -> max и крайние значения
+        for (auto* p : base->getParameters())
+        {
+            auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(p);
+            if (ranged == nullptr || ranged->getParameterID() == EffectBase::enabledParameterId)
+                continue;
+
+            auto swept = descriptor.create();
+            const auto sweep = sweepRun(*swept, ranged->getParameterID(), riff, 256);
+            auto toggled = descriptor.create();
+            const auto jump = sweepRun(*toggled, ranged->getParameterID(), riff, 256, true);
+
+            float extremePeak = 0.0f;
+            bool extremeFinite = true;
+            for (const float value : { 0.0f, 1.0f })
+            {
+                auto effect = descriptor.create();
+                effect->getValueTreeState().getParameter(ranged->getParameterID())->setValueNotifyingHost(value);
+                const auto r = stressRun(*effect, riff, 256, false, 3);
+                extremePeak = std::max(extremePeak, r.peak);
+                extremeFinite = extremeFinite && r.finite;
+            }
+
+            const double sweepDb = 20.0 * std::log10(sweep.peak + 1e-9), extremeDb = 20.0 * std::log10(extremePeak + 1e-9);
+            const double clickLimit = std::max(25.0, reference.clickRatio * 1.6);
+            const bool clicky = sweep.clickRatio > clickLimit || jump.clickRatio > clickLimit;
+
+            if (clicky || extremeDb > 6.0 || ! sweep.finite || ! extremeFinite)
+                std::printf("     !! %-10s sweep click %5.1f @%.2fs peak %+5.1f | jump click %5.1f @%.2fs | extreme peak %+5.1f dB%s\n",
+                            ranged->getParameterID().toRawUTF8(), sweep.clickRatio, sweep.clickAt, sweepDb,
+                            jump.clickRatio, jump.clickAt, extremeDb, sweep.finite && extremeFinite ? "" : "  NaN!");
+
+            CHECK(sweep.finite && extremeFinite, "%s %s: NaN / Inf", descriptor.typeId.toRawUTF8(), ranged->getParameterID().toRawUTF8());
+        }
+    }
+}
+
+// THD компрессора на низкой ноте при самых быстрых attack / release: усиление не должно "дрожать" с волной
+static void testCompressorDistortion()
+{
+    for (float release : { 10.0f, 40.0f, 150.0f })
+    {
+        CompressorProcessor comp;
+        const auto in = sineSignal(82.41, 1.0, 0.5f);
+        const auto out = runEffect(comp, in, { { "threshold", -40.0f }, { "ratio", 10.0f }, { "attack", 0.1f },
+                                               { "release", release }, { "makeup", 0.0f } });
+        double fundamental = 0.0, harmonics = 0.0;
+
+        for (int h = 1; h <= 10; ++h)
+        {
+            double re = 0.0, im = 0.0;
+
+            for (size_t i = out.size() / 2; i < out.size(); ++i)
+            {
+                const double phase = juce::MathConstants<double>::twoPi * 82.41 * h * (double) i / 48000.0;
+                re += out[i] * std::cos(phase);
+                im += out[i] * std::sin(phase);
+            }
+
+            (h == 1 ? fundamental : harmonics) += re * re + im * im;
+        }
+
+        const double thd = 100.0 * std::sqrt(harmonics / juce::jmax(1.0e-12, fundamental));
+        std::printf("Compressor THD at 82 Hz, release %4.0f ms: %.2f %%\n", release, thd);
+        CHECK(thd < 2.0, "compressor THD %.2f %% at release %.0f ms", thd, release);
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI init;
@@ -2727,5 +3007,9 @@ int main()
     stage("testNewPedals");
     testNewPedals();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);
+    stage("testCompressorDistortion");
+    testCompressorDistortion();
+    stage("testStressAllEffects");
+    testStressAllEffects();
     return failures == 0 ? 0 : 1;
 }

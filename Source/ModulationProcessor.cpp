@@ -50,6 +50,8 @@ void ModulationProcessor::prepareEffect(double newSampleRate, int)
     delayMask = size - 1;
     mixSmoothed.reset(sampleRate, 0.03);
     depthSmoothed.reset(sampleRate, 0.03);
+    feedbackSmoothed.reset(sampleRate, 0.03);
+    modeFadeStep = (float) (1.0 / (0.01 * sampleRate));
     resetEffect();
 }
 
@@ -68,6 +70,9 @@ void ModulationProcessor::resetEffect()
 
     mixSmoothed.setCurrentAndTargetValue(mixPercent.load() * 0.01f);
     depthSmoothed.setCurrentAndTargetValue(depthPercent.load() * 0.01f);
+    feedbackSmoothed.setCurrentAndTargetValue(feedbackPercent.load() * 0.01f);
+    activeMode = (Mode) juce::jlimit(0, 3, juce::roundToInt(modeChoice.load()));
+    modeFade = 1.0f;
 }
 
 float ModulationProcessor::readDelay(int channel, float delaySamples) const noexcept
@@ -89,20 +94,43 @@ void ModulationProcessor::processEffect(juce::AudioBuffer<float>& buffer)
     if (numChannels < 1 || numSamples < 1 || delayLines[0].empty())
         return;
 
-    const auto mode = (Mode) juce::jlimit(0, 3, juce::roundToInt(modeChoice.load()));
+    const auto requestedMode = (Mode) juce::jlimit(0, 3, juce::roundToInt(modeChoice.load()));
     const double increment = juce::MathConstants<double>::twoPi * (double) rateHz.load() / sampleRate;
-    const float feedback = feedbackPercent.load() * 0.01f;
     const float msToSamples = (float) (sampleRate * 0.001);
 
     mixSmoothed.setTargetValue(mixPercent.load() * 0.01f);
     depthSmoothed.setTargetValue(depthPercent.load() * 0.01f);
+    feedbackSmoothed.setTargetValue(feedbackPercent.load() * 0.01f);
 
     auto* const* data = buffer.getArrayOfWritePointers();
 
     for (int i = 0; i < numSamples; ++i)
     {
-        const float mix = mixSmoothed.getNextValue();
+        if (requestedMode != activeMode)
+        {
+            modeFade -= modeFadeStep;
+
+            if (modeFade <= 0.0f)
+            {
+                // Эффект полностью ушёл: новый режим стартует с чистыми линиями и фильтрами
+                modeFade = 0.0f;
+                activeMode = requestedMode;
+                feedbackSample.fill(0.0f);
+                phaserFeedback.fill(0.0f);
+
+                for (auto& stages : allpassState)
+                    stages.fill(0.0f);
+            }
+        }
+        else if (modeFade < 1.0f)
+        {
+            modeFade = juce::jmin(1.0f, modeFade + modeFadeStep);
+        }
+
+        const Mode mode = activeMode;
+        const float mix = mixSmoothed.getNextValue() * modeFade;
         const float depth = depthSmoothed.getNextValue();
+        const float feedback = feedbackSmoothed.getNextValue();
 
         for (int ch = 0; ch < numChannels; ++ch)
         {
@@ -110,6 +138,10 @@ void ModulationProcessor::processEffect(juce::AudioBuffer<float>& buffer)
             const float lfo = (float) std::sin(phase + (ch == 1 ? juce::MathConstants<double>::halfPi : 0.0));
             const float dry = data[ch][i];
             float wet = dry;
+
+            // Линия задержки пишется и в Phaser / Tremolo: при переходе на Chorus в ней свежий сигнал
+            if (mode == Mode::phaser || mode == Mode::tremolo)
+                delayLines[(size_t) ch][(size_t) writeIndex] = dry;
 
             switch (mode)
             {
@@ -153,7 +185,7 @@ void ModulationProcessor::processEffect(juce::AudioBuffer<float>& buffer)
                 }
 
                 case Mode::tremolo:
-                    data[ch][i] = dry * (1.0f - depth * (0.5f + 0.5f * lfo));
+                    data[ch][i] = dry * (1.0f - depth * modeFade * (0.5f + 0.5f * lfo));
                     continue;
             }
 

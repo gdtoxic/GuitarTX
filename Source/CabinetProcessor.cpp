@@ -172,6 +172,9 @@ void CabinetProcessor::prepareEffect(double newSampleRate, int newMaxBlockSize)
     maxBlockSize = juce::jmax(1, newMaxBlockSize);
     builtInModel = -1;   // пересчитать фильтры под новую частоту
 
+    for (auto& filter : micFilters)
+        filter.setRampLength(Biquad::rampFor(sampleRate));
+
     juce::dsp::ProcessSpec spec;
     spec.sampleRate       = sampleRate;
     spec.maximumBlockSize = (juce::uint32) maxBlockSize;
@@ -187,6 +190,8 @@ void CabinetProcessor::prepareEffect(double newSampleRate, int newMaxBlockSize)
 
     for (auto& line : reflection)
         line.assign((size_t) size, 0.0f);
+
+    reflectionSmoothing = (float) (1.0 - std::exp(-1.0 / (0.02 * sampleRate)));
 
     levelSmoothed.reset(sampleRate, 0.02);
     levelSmoothed.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(levelDb.load()));
@@ -212,6 +217,8 @@ void CabinetProcessor::resetEffect()
         std::fill(line.begin(), line.end(), 0.0f);
 
     reflectionWrite = 0;
+    reflectionDelay = targetReflectionDelay;
+    reflectionGain = targetReflectionGain;
     levelSmoothed.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(levelDb.load()));
     mixSmoothed.setCurrentAndTargetValue(irLoadedB.load() ? mixPercent.load() * 0.01f : 0.0f);
 }
@@ -293,9 +300,9 @@ void CabinetProcessor::updateMicrophone(float position, float distance)
     micFilters[1].setPeak(sampleRate, 1200.0f, 0.7f, 2.0f * position);
     micFilters[2].setLowShelf(sampleRate, 160.0f, -6.0f * distance);
 
-    reflectionDelay = juce::jlimit(1, (int) reflection[0].size() - 1,
-                                   juce::roundToInt((0.6 + 2.4 * distance) * 0.001 * sampleRate));
-    reflectionGain = 0.3f * distance;
+    targetReflectionDelay = juce::jlimit(1.0f, (float) reflection[0].size() - 2.0f,
+                                         (float) ((0.6 + 2.4 * distance) * 0.001 * sampleRate));
+    targetReflectionGain = 0.3f * distance;
 
     lastPosition = position;
     lastDistance = distance;
@@ -306,37 +313,74 @@ void CabinetProcessor::processMicrophone(juce::AudioBuffer<float>& buffer)
     const float position = positionPercent.load() * 0.01f;
     const float distance = distancePercent.load() * 0.01f;
 
-    if (position <= 0.0f && distance <= 0.0f)
-        return;
-
     if (! juce::approximatelyEqual(position, lastPosition) || ! juce::approximatelyEqual(distance, lastDistance))
         updateMicrophone(position, distance);
 
     const int numChannels = juce::jmin(2, buffer.getNumChannels());
     const int numSamples  = buffer.getNumSamples();
     const int mask = (int) reflection[0].size() - 1;
-    int write = reflectionWrite;
+    const bool filtersActive = position > 0.0f || distance > 0.0f;
+
+    // Линия отражения пишется всегда: при включении Mic Dist в ней свежий сигнал, а не старый хвост
+    if (! filtersActive && reflectionGain < 1.0e-5f)
+    {
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            const float* data = buffer.getReadPointer(ch);
+            auto& line = reflection[(size_t) ch];
+            int write = reflectionWrite;
+
+            for (int i = 0; i < numSamples; ++i)
+            {
+                line[(size_t) write] = data[i];
+                write = (write + 1) & mask;
+            }
+        }
+
+        reflectionWrite = (reflectionWrite + numSamples) & mask;
+        reflectionGain = targetReflectionGain;
+        reflectionDelay = targetReflectionDelay;
+        return;
+    }
+
+    const float startDelay = reflectionDelay, startGain = reflectionGain;
+    float delay = startDelay, gain = startGain;
 
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* data = buffer.getWritePointer(ch);
 
-        for (auto& filter : micFilters)
-            filter.process(data, numSamples, ch);
+        if (filtersActive)
+            for (auto& filter : micFilters)
+                filter.process(data, numSamples, ch);
 
-        // Отражение от пола / стены: копия с задержкой в несколько миллисекунд
+        // Отражение от пола / стены: копия с задержкой в несколько миллисекунд (дробная, со скольжением)
         auto& line = reflection[(size_t) ch];
-        write = reflectionWrite;
+        int write = reflectionWrite;
+        delay = startDelay;
+        gain = startGain;
 
         for (int i = 0; i < numSamples; ++i)
         {
+            delay += reflectionSmoothing * (targetReflectionDelay - delay);
+            gain  += reflectionSmoothing * (targetReflectionGain - gain);
+
             line[(size_t) write] = data[i];
-            data[i] += reflectionGain * line[(size_t) ((write - reflectionDelay) & mask)];
+
+            const float readPosition = (float) write - delay;
+            const int   base = (int) std::floor(readPosition);
+            const float frac = readPosition - (float) base;
+            const float a = line[(size_t) (base & mask)];
+            const float b = line[(size_t) ((base + 1) & mask)];
+
+            data[i] += gain * (a + frac * (b - a));
             write = (write + 1) & mask;
         }
     }
 
-    reflectionWrite = write;
+    reflectionDelay = delay;
+    reflectionGain = gain;
+    reflectionWrite = (reflectionWrite + numSamples) & mask;
 }
 
 void CabinetProcessor::processMain(juce::AudioBuffer<float>& buffer)

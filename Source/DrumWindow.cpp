@@ -541,7 +541,7 @@ public:
         kitBox.setBounds(row1.removeFromLeft(130));
         row1.removeFromLeft(20);
         levelLabel.setBounds(row1.removeFromLeft(42));
-        levelSlider.setBounds(row1.removeFromLeft(130));
+        levelSlider.setBounds(row1.removeFromLeft(120));
         row1.removeFromLeft(20);
         fillLabel.setBounds(row1.removeFromLeft(30));
         fillBox.setBounds(row1.removeFromLeft(100));
@@ -553,7 +553,7 @@ public:
         row2 = row2.withSizeKeepingCentre(row2.getWidth(), 30);
         prevButton.setBounds(row2.removeFromLeft(32));
         row2.removeFromLeft(4);
-        patternBox.setBounds(row2.removeFromLeft(220));
+        patternBox.setBounds(row2.removeFromLeft(190));
         row2.removeFromLeft(4);
         nextButton.setBounds(row2.removeFromLeft(32));
         row2.removeFromLeft(8);
@@ -570,30 +570,31 @@ public:
         lengthBox.setBounds(row2.removeFromLeft(62));
         row2.removeFromLeft(12);
         swingLabel.setBounds(row2.removeFromLeft(44));
-        swingSlider.setBounds(row2.removeFromLeft(110));
+        swingSlider.setBounds(row2.removeFromLeft(90));
 
         // DRUMMER: LISTEN, File, Last DI, FOLLOW | Style, Density | Generate, Vary, RIFF
         auto row3 = cardRow(drummerCard);
         row3 = row3.withSizeKeepingCentre(row3.getWidth(), 30);
-        listenButton.setBounds(row3.removeFromLeft(110));
+        // Ширины подобраны под минимальное окно (1000): последняя кнопка RIFF не обрезается
+        listenButton.setBounds(row3.removeFromLeft(100));
         row3.removeFromLeft(4);
-        fileButton.setBounds(row3.removeFromLeft(80));
+        fileButton.setBounds(row3.removeFromLeft(70));
         row3.removeFromLeft(4);
-        lastDiButton.setBounds(row3.removeFromLeft(70));
+        lastDiButton.setBounds(row3.removeFromLeft(66));
         row3.removeFromLeft(4);
-        followButton.setBounds(row3.removeFromLeft(90));
-        row3.removeFromLeft(24);
-        styleLabel.setBounds(row3.removeFromLeft(38));
-        styleBox.setBounds(row3.removeFromLeft(120));
-        row3.removeFromLeft(12);
-        densityLabel.setBounds(row3.removeFromLeft(54));
-        densitySlider.setBounds(row3.removeFromLeft(100));
-        row3.removeFromLeft(12);
-        generateButton.setBounds(row3.removeFromLeft(84));
+        followButton.setBounds(row3.removeFromLeft(80));
+        row3.removeFromLeft(16);
+        styleLabel.setBounds(row3.removeFromLeft(36));
+        styleBox.setBounds(row3.removeFromLeft(110));
+        row3.removeFromLeft(10);
+        densityLabel.setBounds(row3.removeFromLeft(52));
+        densitySlider.setBounds(row3.removeFromLeft(90));
+        row3.removeFromLeft(10);
+        generateButton.setBounds(row3.removeFromLeft(78));
         row3.removeFromLeft(4);
-        varyButton.setBounds(row3.removeFromLeft(56));
+        varyButton.setBounds(row3.removeFromLeft(52));
         row3.removeFromLeft(4);
-        riffButton.setBounds(row3.removeFromLeft(56));
+        riffButton.setBounds(row3.removeFromLeft(52));
 
         statusLabel.setBounds(area.removeFromBottom(20));
         area.removeFromBottom(6);
@@ -1051,7 +1052,7 @@ DrumWindow::DrumWindow(DrumMachine& drums, DrumLibrary& library, DrumAssistant& 
     setUsingNativeTitleBar(true);
     setContentOwned(content, true);
     setResizable(true, false);
-    setResizeLimits(900, content->getHeight(), 1800, content->getHeight() + 200);
+    setResizeLimits(1000, content->getHeight(), 1800, content->getHeight() + 200);
 }
 
 DrumWindow::~DrumWindow() = default;

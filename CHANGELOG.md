@@ -2,6 +2,28 @@
 
 All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
 
+## [0.5.1] - 2026-11-05
+
+### Fixed
+- **Crackle at small audio buffers** with Harmonizer / Pitch: the harmonizer's pitch tracking is now ~4× lighter
+  (short YIN window at 8 kHz) and the pitch shifter's splice search ~2× lighter — the worst audio block of the
+  harmonizer dropped from ~470 to ~230 µs (buffer 64 = 1333 µs).
+- **Harmonizer**: steadier voices — a new note is taken after two matching measurements (octave jumps after three),
+  so the harmony no longer flickers on pick attack and slides; low notes down to 40 Hz (drop / 8-string tunings).
+- **Compressor**: no more distortion of low notes at short release (peak detector with a 12 ms hold:
+  THD at 82 Hz 9 % → 0.7 %); Threshold and Ratio move smoothly.
+- **Clicks when turning knobs / MIDI / snapshots** removed: tone filters glide to new settings (Distortion
+  Bass / Mid / Treble / Presence / Resonance, EQ, Pitch Tone, Sub 808 Tone, Cabinet mic, Delay, Reverb, Glitch),
+  Wah Q, Sub 808 Level and Modulation Feedback are smoothed.
+- **Modulation**: switching Chorus / Flanger / Phaser / Tremolo crossfades (~10 ms) instead of clicking.
+- **Cabinet**: turning **Mic Dist** no longer clicks (the reflection delay glides).
+- **Drums window**: the **RIFF** button and the Swing slider were cut off ("...") at the default window width;
+  the minimum window width is now 1000 px.
+
+### Tests
+- A stress stage for every effect: random knob jumps, smooth sweeps and 15 % ↔ 85 % jumps for each parameter,
+  extreme values (no NaN / Inf), worst audio block at buffer 64; compressor THD check.
+
 ## [0.5.0] - 2026-10-31
 
 ### Added

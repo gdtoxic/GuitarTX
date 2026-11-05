@@ -51,6 +51,7 @@ void WahProcessor::prepareEffect(double newSampleRate, int)
     envelopeRelease   = coefficient(0.12, sampleRate);
     positionSmoothing = coefficient(0.015, sampleRate);
     mixSmoothed.reset(sampleRate, 0.02);
+    dampingSmoothed.reset(sampleRate, 0.03);
     resetEffect();
 }
 
@@ -62,6 +63,7 @@ void WahProcessor::resetEffect()
     lfoPhase = 0.0;
     position = positionPercent.load() * 0.01f;
     mixSmoothed.setCurrentAndTargetValue(mixPercent.load() * 0.01f);
+    dampingSmoothed.setCurrentAndTargetValue(1.0f / juce::jmax(0.5f, resonance.load()));
 }
 
 void WahProcessor::processEffect(juce::AudioBuffer<float>& buffer)
@@ -76,10 +78,10 @@ void WahProcessor::processEffect(juce::AudioBuffer<float>& buffer)
     const float pedal = positionPercent.load() * 0.01f;
     const float threshold = sensitivityDb.load();
     const double increment = juce::MathConstants<double>::twoPi * (double) rateHz.load() / sampleRate;
-    const float k = 1.0f / juce::jmax(0.5f, resonance.load());   // демпфирование SVF = 1 / Q
     constexpr float peakGain = 2.2f;   // подъём на резонансе (~+7 дБ), как у педали
 
     mixSmoothed.setTargetValue(mixPercent.load() * 0.01f);
+    dampingSmoothed.setTargetValue(1.0f / juce::jmax(0.5f, resonance.load()));
     auto* const* data = buffer.getArrayOfWritePointers();
 
     for (int i = 0; i < numSamples; ++i)
@@ -111,6 +113,7 @@ void WahProcessor::processEffect(juce::AudioBuffer<float>& buffer)
 
         // Частота по положению: экспоненциально, как у потенциометра педали
         const float hz = lowHz * std::pow(highHz / lowHz, position);
+        const float k = dampingSmoothed.getNextValue();
         const float g = std::tan(juce::MathConstants<float>::pi * hz / (float) sampleRate);
         const float a1 = 1.0f / (1.0f + g * (g + k));
         const float a2 = g * a1;

@@ -49,5 +49,9 @@ private:
     std::array<std::array<float, phaserStages>, maxChannels> allpassState {};
     std::array<float, maxChannels> phaserFeedback {};
 
-    juce::SmoothedValue<float> mixSmoothed, depthSmoothed;
+    juce::SmoothedValue<float> mixSmoothed, depthSmoothed, feedbackSmoothed;
+
+    // Смена режима: эффект плавно уходит в сухой сигнал (~10 мс), режим меняется, эффект возвращается
+    Mode  activeMode = Mode::chorus;
+    float modeFade = 1.0f, modeFadeStep = 0.002f;
 };

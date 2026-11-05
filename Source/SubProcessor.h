@@ -68,6 +68,7 @@ private:
     Biquad trackerHighPass, trackerLowPass1, trackerLowPass2;
     Biquad yinLowPass1, yinLowPass2;     // антиалиасинг перед децимацией
     Biquad toneFilter1, toneFilter2, dcBlocker;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> levelSmoothed { 1.0f };
 
     double sampleRate = 48000.0;
 

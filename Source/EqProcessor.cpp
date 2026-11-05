@@ -236,6 +236,9 @@ float EqProcessor::getResponseDb(const std::array<Biquad, numBands>& b, const Se
 void EqProcessor::prepareEffect(double newSampleRate, int)
 {
     sampleRate = newSampleRate;
+
+    for (auto& band : bands)
+        band.setRampLength(Biquad::rampFor(sampleRate));
     levelSmoothed.reset(sampleRate, 0.02);
     resetEffect();
 }

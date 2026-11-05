@@ -82,8 +82,11 @@ private:
     // Микрофон: позиция (центр -> край диффузора) и расстояние (вплотную -> дальше, отражения)
     std::array<Biquad, 3> micFilters;
     std::array<std::vector<float>, 2> reflection;
-    int reflectionWrite = 0, reflectionDelay = 1;
-    float reflectionGain = 0.0f, lastPosition = -1.0f, lastDistance = -1.0f;
+    // Задержка и уровень отражения скользят к цели (~20 мс): Mic Dist крутится без щелчков
+    int reflectionWrite = 0;
+    float reflectionDelay = 1.0f, targetReflectionDelay = 1.0f;
+    float reflectionGain = 0.0f, targetReflectionGain = 0.0f, reflectionSmoothing = 0.001f;
+    float lastPosition = -1.0f, lastDistance = -1.0f;
     juce::AudioBuffer<float> slotBBuffer;
     juce::SmoothedValue<float> mixSmoothed;
     bool wasActiveB = false;

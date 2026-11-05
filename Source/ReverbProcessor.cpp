@@ -100,6 +100,7 @@ EffectBase::Layout ReverbProcessor::createLayout()
 void ReverbProcessor::prepareEffect(double newSampleRate, int)
 {
     sampleRate = newSampleRate;
+    lowCut.setRampLength(Biquad::rampFor(sampleRate));
 
     auto powerOfTwoAbove = [](int n)
     {

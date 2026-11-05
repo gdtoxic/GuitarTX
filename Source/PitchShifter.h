@@ -149,7 +149,7 @@ private:
     static constexpr double windowSeconds      = 0.015;   // длина окна кроссфейда
     static constexpr double searchSeconds      = 0.040;   // диапазон поиска склейки (общий период аккорда)
     static constexpr double correlationSeconds = 0.030;   // длина сравнения
-    static constexpr double coarseRate         = 12000.0; // частота грубого прохода поиска
+    static constexpr double coarseRate         = 8000.0;  // частота грубого прохода поиска
     static constexpr double nearBestRatio      = 0.9;
     static constexpr double minPhaseRate       = 0.05;
     static constexpr double smoothingSeconds   = 0.012;   // сглаживание сдвига

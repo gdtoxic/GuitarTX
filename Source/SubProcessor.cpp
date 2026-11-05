@@ -73,6 +73,9 @@ float SubProcessor::snapToSemitone(float hz)
 void SubProcessor::prepareEffect(double newSampleRate, int)
 {
     sampleRate = newSampleRate;
+    toneFilter1.setRampLength(Biquad::rampFor(sampleRate));
+    toneFilter2.setRampLength(Biquad::rampFor(sampleRate));
+    levelSmoothed.reset(sampleRate, 0.02);
 
     trackerHighPass.setHighPass(sampleRate, trackerLowHz);
     trackerLowPass1.setLowPass(sampleRate, trackerHighHz);
@@ -94,6 +97,8 @@ void SubProcessor::resetEffect()
                           &yinLowPass1, &yinLowPass2,
                           &toneFilter1, &toneFilter2, &dcBlocker })
         filter->reset();
+
+    levelSmoothed.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(levelDb.load(), -40.0f) + 1.0e-4f);
 
     envelope = amplitude = punchEnv = 0.0f;
     frequency = 55.0f;
@@ -246,7 +251,7 @@ void SubProcessor::processEffect(juce::AudioBuffer<float>& buffer)
     const auto   currentMode = (Mode) juce::jlimit(0, 2, juce::roundToInt(mode.load()));
     const int    octaves     = -juce::roundToInt(octave.load());              // 1 или 2
     const double ratio       = std::pow(2.0, (double) -octaves);
-    const float  level       = juce::Decibels::decibelsToGain(levelDb.load(), -40.0f);
+    levelSmoothed.setTargetValue(juce::Decibels::decibelsToGain(levelDb.load(), -40.0f) + 1.0e-4f);
     const float  drive       = 1.0f + drivePercent.load() * 0.08f;
     const float  driveNorm   = 1.0f / std::tanh(drive);
     const float  threshold   = juce::Decibels::decibelsToGain(thresholdDb.load());
@@ -377,7 +382,7 @@ void SubProcessor::processEffect(juce::AudioBuffer<float>& buffer)
         sub = std::tanh(sub * drive) * driveNorm;
         sub = toneFilter1.processSample(0, sub);
         sub = toneFilter2.processSample(0, sub);
-        sub = dcBlocker.processSample(0, sub) * level;
+        sub = dcBlocker.processSample(0, sub) * levelSmoothed.getNextValue();
 
         // Параллельная ветка: на выходе только саб
         left[i]  = sub;

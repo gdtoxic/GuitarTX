@@ -61,6 +61,10 @@ void DelayProcessor::prepareEffect(double newSampleRate, int)
 {
     sampleRate = newSampleRate;
 
+    for (auto* filters : { &toneFilters, &lowCutFilters })
+        for (auto& filter : *filters)
+            filter.setRampLength(Biquad::rampFor(sampleRate));
+
     // Запас на модуляцию и кубическую интерполяцию
     const int needed = (int) std::ceil(sampleRate * (maxDelaySeconds + 0.02)) + 8;
 

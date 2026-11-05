@@ -6,10 +6,29 @@
 // Биквадратный фильтр (RBJ Audio EQ Cookbook), Transposed Direct Form II.
 // Коэффициенты считаются без выделения памяти - можно менять прямо в аудиопотоке.
 // Состояние хранится отдельно для каждого канала (до maxChannels).
+//
+// setRampLength(n): новые коэффициенты наступают не сразу, а линейно за n отсчётов - ручки,
+// автоматизация и MIDI не щёлкают. Область устойчивости (a1, a2) выпуклая, поэтому все
+// промежуточные фильтры между двумя устойчивыми тоже устойчивы. Первый расчёт - всегда сразу.
 class Biquad
 {
 public:
     static constexpr int maxChannels = 2;
+
+    void setRampLength(int samples) noexcept { rampLength = juce::jmax(0, samples); }
+
+    // Обычная длина перехода: ~5 мс
+    static int rampFor(double sampleRate) noexcept { return juce::jmax(16, juce::roundToInt(0.005 * sampleRate)); }
+
+    // Сразу перейти к последним рассчитанным коэффициентам (например, при сбросе)
+    void snapToTarget() noexcept
+    {
+        for (auto& s : state)
+        {
+            s.coefficients = target;
+            s.remaining = 0;
+        }
+    }
 
     void setHighPass(double sampleRate, float frequency, float q = 0.7071f)
     {
@@ -71,8 +90,9 @@ public:
         const std::complex<double> z1 = std::polar(1.0, -w);
         const std::complex<double> z2 = z1 * z1;
 
-        const auto numerator   = (double) b0 + (double) b1 * z1 + (double) b2 * z2;
-        const auto denominator = 1.0 + (double) a1 * z1 + (double) a2 * z2;
+        const auto& c = target;
+        const auto numerator   = (double) c[0] + (double) c[1] * z1 + (double) c[2] * z2;
+        const auto denominator = 1.0 + (double) c[3] * z1 + (double) c[4] * z2;
 
         return std::abs(numerator / denominator);
     }
@@ -83,16 +103,30 @@ public:
     void reset() noexcept
     {
         for (auto& s : state)
-            s = {};
+        {
+            s.z1 = s.z2 = 0.0f;
+            s.coefficients = target;
+            s.remaining = 0;
+        }
     }
 
     float processSample(int channel, float x) noexcept
     {
         auto& s = state[(size_t) channel];
+        auto& c = s.coefficients;
 
-        const float y = b0 * x + s.z1;
-        s.z1 = b1 * x - a1 * y + s.z2;
-        s.z2 = b2 * x - a2 * y;
+        if (s.remaining > 0)
+        {
+            if (--s.remaining == 0)
+                c = target;
+            else
+                for (size_t k = 0; k < c.size(); ++k)
+                    c[k] += s.increment[k];
+        }
+
+        const float y = c[0] * x + s.z1;
+        s.z1 = c[1] * x - c[3] * y + s.z2;
+        s.z2 = c[2] * x - c[4] * y;
 
         return y;
     }
@@ -120,15 +154,45 @@ private:
     {
         const double inv = 1.0 / na0;
 
-        b0 = (float) (nb0 * inv);
-        b1 = (float) (nb1 * inv);
-        b2 = (float) (nb2 * inv);
-        a1 = (float) (na1 * inv);
-        a2 = (float) (na2 * inv);
+        target = { (float) (nb0 * inv), (float) (nb1 * inv), (float) (nb2 * inv),
+                   (float) (na1 * inv), (float) (na2 * inv) };
+
+        if (rampLength == 0 || ! primed)
+        {
+            primed = true;
+            snapToTarget();
+            return;
+        }
+
+        const float step = 1.0f / (float) rampLength;
+
+        for (auto& s : state)
+        {
+            if (s.coefficients == target)
+            {
+                s.remaining = 0;
+                continue;
+            }
+
+            for (size_t k = 0; k < target.size(); ++k)
+                s.increment[k] = (target[k] - s.coefficients[k]) * step;
+
+            s.remaining = rampLength;
+        }
     }
 
-    struct State { float z1 = 0.0f, z2 = 0.0f; };
+    using Coefficients = std::array<float, 5>;   // b0, b1, b2, a1, a2
 
-    float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f;
+    struct State
+    {
+        float z1 = 0.0f, z2 = 0.0f;
+        Coefficients coefficients { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+        Coefficients increment {};
+        int remaining = 0;
+    };
+
+    Coefficients target { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f };
     std::array<State, maxChannels> state {};
+    int  rampLength = 0;
+    bool primed = false;
 };

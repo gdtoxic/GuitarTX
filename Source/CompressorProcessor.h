@@ -4,7 +4,8 @@
 
 // Компрессор педального типа (перед перегрузом): ровнее атака, длиннее сустейн.
 //
-//  Детектор - пик со сглаживанием attack / release, стерео-связка, мягкое колено 6 дБ.
+//  Детектор - пик с удержанием ~12 мс (дольше периода низких нот: усиление не "дрожит" с формой
+//  волны, без искажений на быстром release), затем attack / release; стерео-связка, мягкое колено 6 дБ.
 //  Mix - параллельная компрессия: 100 % - только сжатый сигнал.
 class CompressorProcessor : public EffectBase
 {
@@ -38,5 +39,7 @@ private:
 
     double sampleRate = 48000.0;
     float  envelopeDb = -120.0f;   // уровень после детектора (дБ)
-    juce::SmoothedValue<float> mixSmoothed, makeupSmoothed;
+    float  heldDb = -120.0f;       // пик с удержанием
+    int    holdSamples = 576, holdCounter = 0;
+    juce::SmoothedValue<float> mixSmoothed, makeupSmoothed, thresholdSmoothed, ratioSmoothed;
 };

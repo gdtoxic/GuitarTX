@@ -111,6 +111,10 @@ void DistortionProcessor::prepareEffect(double newSampleRate, int newMaxBlockSiz
     sampleRate   = newSampleRate;
     maxBlockSize = juce::jmax(1, newMaxBlockSize);
 
+    // Ручки тембра (и Resonance) меняются без щелчков
+    for (auto* filter : { &bassFilter, &midFilter, &trebleFilter, &presenceFilter, &resonanceFilter })
+        filter->setRampLength(Biquad::rampFor(sampleRate));
+
     oversampling.initProcessing((size_t) maxBlockSize);
 
     const double osRate = sampleRate * (double) oversampling.getOversamplingFactor();

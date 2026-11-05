@@ -2,10 +2,13 @@
 
 namespace
 {
-    constexpr double analysisRate   = 8000.0;
     constexpr double hopSeconds     = 0.02;
-    constexpr float  minClarity     = 0.6f;
+    constexpr float  minClarity     = 0.6f;      // 1 - минимум CMNDF
     constexpr float  minLevelDb     = -50.0f;
+    constexpr double minPitchHz     = 40.0;      // ниже - не гармонизируем (8-струнка F#1 = 46 Гц)
+    constexpr double maxPitchHz     = 1500.0;
+    constexpr int    yinWindow      = 256;       // 32 мс на 8 кГц
+    constexpr float  yinThreshold   = 0.15f;
     constexpr int    releaseHops    = 8;      // ~160 мс без уверенной высоты - голоса возвращаются к 0
 
     using Scale = std::array<int, 7>;
@@ -113,9 +116,17 @@ juce::String HarmonizerProcessor::getStatusText() const
 void HarmonizerProcessor::prepareEffect(double newSampleRate, int maxBlockSize)
 {
     sampleRate = newSampleRate;
-    decimation = juce::jmax(1, juce::roundToInt(sampleRate / analysisRate));
-    detector.prepare(sampleRate / decimation);
-    decimated.assign((size_t) (maxBlockSize / decimation + 2), 0.0f);
+    decimation = juce::jmax(1, juce::roundToInt(sampleRate / 8000.0));
+    analysisRate = sampleRate / decimation;
+    minLag = juce::jmax(2, (int) (analysisRate / maxPitchHz));
+    maxLag = (int) std::ceil(analysisRate / minPitchHz) + 1;
+
+    int size = 1;
+    while (size < yinWindow + maxLag + 2)
+        size <<= 1;
+
+    ring.assign((size_t) size, 0.0f);
+    yinDiff.assign((size_t) maxLag + 2, 1.0f);
 
     for (auto& shifter : shifters)
         shifter.prepare(sampleRate, maxBlockSize);
@@ -128,7 +139,10 @@ void HarmonizerProcessor::prepareEffect(double newSampleRate, int maxBlockSize)
 
 void HarmonizerProcessor::resetEffect()
 {
-    detector.clear();
+    std::fill(ring.begin(), ring.end(), 0.0f);
+    ringWrite = ringFilled = 0;
+    pendingNote = -1;
+    pendingCount = 0;
 
     for (auto& shifter : shifters)
     {
@@ -144,12 +158,111 @@ void HarmonizerProcessor::resetEffect()
     levelSmoothed.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(levelDb.load()));
 }
 
+std::optional<float> HarmonizerProcessor::detectPitch()
+{
+    const int size = (int) ring.size();
+    const int mask = size - 1;
+    const int length = yinWindow;
+
+    if (ringFilled < length + maxLag)
+        return std::nullopt;
+
+    // Окно - последние length + maxLag отсчётов
+    const int start = (ringWrite - length - maxLag + size) & mask;
+    auto at = [this, start, mask](int i) { return ring[(size_t) ((start + i) & mask)]; };
+
+    double energy = 0.0;
+    for (int j = 0; j < length; ++j)
+        energy += (double) at(j) * at(j);
+
+    if (10.0 * std::log10(energy / length + 1.0e-12) < minLevelDb)
+        return std::nullopt;
+
+    // Разностная функция и накопленная нормировка (CMNDF)
+    yinDiff[0] = 1.0f;
+    double runningSum = 0.0;
+
+    for (int lag = 1; lag <= maxLag; ++lag)
+    {
+        double sum = 0.0;
+
+        for (int j = 0; j < length; ++j)
+        {
+            const float d = at(j) - at(j + lag);
+            sum += (double) d * d;
+        }
+
+        runningSum += sum;
+        yinDiff[(size_t) lag] = runningSum > 0.0 ? (float) (sum * lag / runningSum) : 1.0f;
+    }
+
+    // Первый провал ниже порога (иначе - глобальный минимум, если он достаточно глубокий)
+    int best = -1;
+
+    for (int lag = minLag; lag < maxLag; ++lag)
+    {
+        if (yinDiff[(size_t) lag] < yinThreshold)
+        {
+            while (lag + 1 < maxLag && yinDiff[(size_t) lag + 1] < yinDiff[(size_t) lag])
+                ++lag;
+
+            best = lag;
+            break;
+        }
+    }
+
+    if (best < 0)
+    {
+        best = minLag;
+        for (int lag = minLag; lag < maxLag; ++lag)
+            if (yinDiff[(size_t) lag] < yinDiff[(size_t) best])
+                best = lag;
+
+        if (1.0f - yinDiff[(size_t) best] < minClarity)
+            return std::nullopt;
+    }
+
+    const float a = yinDiff[(size_t) best - 1], b = yinDiff[(size_t) best], c = yinDiff[(size_t) best + 1];
+    const float denom = a - 2.0f * b + c;
+    const float shift = std::abs(denom) > 1.0e-9f ? juce::jlimit(-0.5f, 0.5f, 0.5f * (a - c) / denom) : 0.0f;
+
+    return (float) (analysisRate / ((double) best + shift));
+}
+
+void HarmonizerProcessor::acceptNote(int note)
+{
+    // Первая нота - сразу; смена - после второго одинакового измерения (октава - после третьего)
+    if (currentNote < 0 || note == currentNote)
+    {
+        currentNote = note;
+        pendingNote = -1;
+        pendingCount = 0;
+        return;
+    }
+
+    if (note != pendingNote)
+    {
+        pendingNote = note;
+        pendingCount = 1;
+        return;
+    }
+
+    const int needed = std::abs(note - currentNote) == 12 ? 3 : 2;
+
+    if (++pendingCount >= needed)
+    {
+        currentNote = note;
+        pendingNote = -1;
+        pendingCount = 0;
+    }
+}
+
 void HarmonizerProcessor::analyse(const float* mono, int numSamples)
 {
     // ФНЧ ~2.5 кГц и прореживание до ~8 кГц
     const float coef = 1.0f - std::exp(-juce::MathConstants<float>::twoPi * 2500.0f / (float) sampleRate);
-    const int hop = juce::roundToInt(hopSeconds * sampleRate / decimation);
-    int count = 0;
+    const int hop = juce::roundToInt(hopSeconds * analysisRate);
+    const int mask = (int) ring.size() - 1;
 
     for (int i = 0; i < numSamples; ++i)
     {
@@ -158,37 +271,28 @@ void HarmonizerProcessor::analyse(const float* mono, int numSamples)
 
         if (++decimationPhase == decimation)
         {
-            decimated[(size_t) count++] = decimationSum / (float) decimation;
+            ring[(size_t) ringWrite] = decimationSum / (float) decimation;
+            ringWrite = (ringWrite + 1) & mask;
+            ringFilled = juce::jmin(ringFilled + 1, (int) ring.size());
             decimationPhase = 0;
             decimationSum = 0.0f;
 
-            if (count == (int) decimated.size())
+            if (++hopCounter < hop)
+                continue;
+
+            hopCounter = 0;
+
+            if (const auto hz = detectPitch())
             {
-                detector.push(decimated.data(), count);
-                count = 0;
+                acceptNote(PitchDetector::toNote(*hz, 440.0f).midiNote);
+                silentHops = 0;
+            }
+            else if (++silentHops >= releaseHops)
+            {
+                currentNote = -1;
+                pendingNote = -1;
             }
         }
-    }
-
-    if (count > 0)
-        detector.push(decimated.data(), count);
-
-    hopCounter += numSamples / decimation;
-
-    if (hopCounter < hop)
-        return;
-
-    hopCounter = 0;
-    const auto result = detector.detect();
-
-    if (result.frequency > 0.0f && result.clarity >= minClarity && result.levelDb > minLevelDb)
-    {
-        currentNote = PitchDetector::toNote(result.frequency, 440.0f).midiNote;
-        silentHops = 0;
-    }
-    else if (++silentHops >= releaseHops)
-    {
-        currentNote = -1;
     }
 
     detectedNote.store(currentNote);
