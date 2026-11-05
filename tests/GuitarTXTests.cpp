@@ -35,7 +35,7 @@
 #include "ModulationProcessor.h"
 #include "WahProcessor.h"
 #include "HarmonizerProcessor.h"
-#include "InputFilePlayer.h"
+#include "InputSampler.h"
 #include <cstdio>
 #include <cstdlib>
 
@@ -2931,74 +2931,125 @@ static void testStressAllEffects()
     }
 }
 
-// Файл на входе: Replace глушит гитару, Mix складывает, после конца файла (без петли) снова гитара
-static void testInputFilePlayer()
+// Сэмплер на входе: щипок запускает сэмпл, высота - по сыгранной ноте, гитара не слышна
+static void testInputSampler()
 {
     const double sr = 48000.0;
-    const int block = 256;
-    const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("guitartx_input_test.wav");
+    const int block = 128;
+    const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("guitartx_sampler_test.wav");
     file.deleteFile();
 
+    // Сэмпл: A3 (220 Гц) с гармониками и затуханием, 44.1 кГц
     {
-        // 0.5 с моно при 44.1 кГц: постоянный уровень 0.3 (проверка пересчёта частоты)
         juce::WavAudioFormat wav;
         std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
         auto writer = wav.createWriterFor(stream, juce::AudioFormatWriterOptions {}.withSampleRate(44100.0).withNumChannels(1).withBitsPerSample(24));
-        juce::AudioBuffer<float> data(1, 22050);
+        juce::AudioBuffer<float> data(1, 44100);
         for (int i = 0; i < data.getNumSamples(); ++i)
-            data.setSample(0, i, 0.3f);
+        {
+            const double t = i / 44100.0;
+            float v = 0.0f;
+            for (int h = 1; h <= 4; ++h)
+                v += (float) (0.3 / h * std::sin(juce::MathConstants<double>::twoPi * 220.0 * h * t));
+            data.setSample(0, i, v * (float) std::exp(-2.0 * t));
+        }
         writer->writeFromAudioSampleBuffer(data, 0, data.getNumSamples());
     }
 
-    InputFilePlayer player;
-    player.setPlayConfigDetails(2, 2, sr, block);
-    player.prepareToPlay(sr, block);
-
+    InputSampler sampler;
     juce::String error;
-    CHECK(player.load(file, error), "input file load: %s", error.toRawUTF8());
-    player.setLooping(false);
+    CHECK(sampler.load(file, error), "sampler load: %s", error.toRawUTF8());
+    std::printf("Sampler: root detected %d (57 = A3), %.2f s\n", sampler.getDetectedRoot(), sampler.getSampleSeconds());
+    CHECK(sampler.getDetectedRoot() == 57, "sampler root note");
 
-    juce::AudioBuffer<float> buf(2, block);
-    juce::MidiBuffer midi;
-
-    // Уровень на выходе после blocks блоков (гитара = постоянные 0.1)
-    auto run = [&](int blocks)
+    // Гитара: щипки E2 (0.1 с) и A2 (0.6 с), Karplus-Strong
+    std::vector<float> guitar((size_t) (1.2 * sr), 0.0f);
+    juce::Random random(3);
+    auto pluck = [&](double start, double hz)
     {
-        float last = 0.0f;
-        for (int b = 0; b < blocks; ++b)
+        const int period = (int) std::lround(sr / hz);
+        std::vector<float> ks((size_t) period);
+        for (auto& v : ks) v = random.nextFloat() * 2.0f - 1.0f;
+        int idx = 0;
+        for (size_t i = (size_t) (start * sr); i < guitar.size(); ++i)
+        {
+            const int next = (idx + 1) % period;
+            const float y = ks[(size_t) idx];
+            ks[(size_t) idx] = 0.996f * 0.5f * (ks[(size_t) idx] + ks[(size_t) next]);
+            idx = next;
+            guitar[i] = 0.4f * y;   // новая нота заменяет старую, как на одной струне
+        }
+    };
+    pluck(0.1, 82.41);
+    pluck(0.6, 110.0);
+
+    auto run = [&](InputSampler& s)
+    {
+        s.setPlayConfigDetails(2, 2, sr, block);
+        s.prepareToPlay(sr, block);
+        std::vector<float> out(guitar.size(), 0.0f);
+        juce::AudioBuffer<float> buf(2, block);
+        juce::MidiBuffer midi;
+
+        for (size_t start = 0; start + (size_t) block <= guitar.size(); start += (size_t) block)
         {
             for (int ch = 0; ch < 2; ++ch)
                 for (int k = 0; k < block; ++k)
-                    buf.setSample(ch, k, 0.1f);
+                    buf.setSample(ch, k, guitar[start + (size_t) k]);
 
-            player.processBlock(buf, midi);
-            last = buf.getSample(1, block - 1);
+            s.processBlock(buf, midi);
+
+            for (int k = 0; k < block; ++k)
+                out[start + (size_t) k] = buf.getSample(0, k);
         }
-        return last;
+        return out;
     };
 
-    const float idle = run(4);
+    auto pitchAt = [sr](const std::vector<float>& out, double from)
+    {
+        PitchDetector detector;
+        detector.prepare(sr);
+        detector.push(out.data() + (size_t) (from * sr), 8192);
+        return detector.detect().frequency;
+    };
 
-    player.setMode(InputFilePlayer::Mode::replace);
-    player.play();
-    juce::Thread::sleep(300);   // фоновое чтение
-    const float replaced = run(10);
+    sampler.setEnabled(true);
+    const auto out = run(sampler);
 
-    player.setMode(InputFilePlayer::Mode::mix);
-    const float mixed = run(10);
+    // Задержка до звука после первого щипка
+    size_t first = (size_t) (0.1 * sr);
+    while (first < out.size() && std::abs(out[first]) < 1.0e-3f)
+        ++first;
+    const double latencyMs = 1000.0 * ((double) first / sr - 0.1);
 
-    // До конца файла (0.5 с) и дальше: без петли файл останавливается, гитара возвращается
-    const float after = run(80);
-    const bool finished = player.pollFinished();
+    const float hz1 = pitchAt(out, 0.2), hz2 = pitchAt(out, 0.7);
+    std::printf("Sampler: %d triggers, last note %d, latency %.1f ms, E2 -> %.1f Hz (82.4), A2 -> %.1f Hz (110)\n",
+                sampler.getTriggerCount(), sampler.getLastNote(), latencyMs, hz1, hz2);
+    CHECK(sampler.getTriggerCount() == 2 && sampler.getLastNote() == 45, "sampler triggers");
+    CHECK(std::abs(1200.0f * std::log2(hz1 / 82.41f)) < 30.0f && std::abs(1200.0f * std::log2(hz2 / 110.0f)) < 30.0f,
+          "sampler follows the played note");
+    CHECK(latencyMs > 0.0 && latencyMs < 45.0, "sampler latency %.1f ms", latencyMs);
 
-    std::printf("Input file: idle %.3f, replace %.3f, mix %.3f, after end %.3f, finished %d\n",
-                idle, replaced, mixed, after, finished ? 1 : 0);
-    CHECK(std::abs(idle - 0.1f) < 1.0e-4f, "input file: guitar passes when not playing");
-    CHECK(std::abs(replaced - 0.3f) < 0.01f, "input file: replace mode");
-    CHECK(std::abs(mixed - 0.4f) < 0.01f, "input file: mix mode");
-    CHECK(std::abs(after - 0.1f) < 0.01f && finished && ! player.isPlaying(), "input file: back to the guitar after the end");
+    // Follow pitch выключен - сэмпл в своей высоте
+    InputSampler fixedPitch;
+    fixedPitch.load(file, error);
+    fixedPitch.setFollowPitch(false);
+    fixedPitch.setEnabled(true);
+    const auto fixedOut = run(fixedPitch);
+    const float hzFixed = pitchAt(fixedOut, 0.2);
+    std::printf("Sampler fixed pitch: %d triggers, %.1f Hz (220)\n", fixedPitch.getTriggerCount(), hzFixed);
+    CHECK(fixedPitch.getTriggerCount() == 2 && std::abs(1200.0f * std::log2(hzFixed / 220.0f)) < 30.0f, "sampler fixed pitch");
 
-    player.unload();
+    // Выключен - гитара как есть
+    InputSampler off;
+    off.load(file, error);
+    off.setEnabled(false);
+    const auto offOut = run(off);
+    float diff = 0.0f;
+    for (size_t i = 0; i < offOut.size() - (size_t) block; ++i)
+        diff = std::max(diff, std::abs(offOut[i] - guitar[i]));
+    CHECK(diff < 1.0e-6f && off.getTriggerCount() == 0, "sampler off: guitar passes (%.6f)", diff);
+
     file.deleteFile();
 }
 
@@ -3079,8 +3130,8 @@ int main()
     stage("testNewPedals");
     testNewPedals();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);
-    stage("testInputFilePlayer");
-    testInputFilePlayer();
+    stage("testInputSampler");
+    testInputSampler();
     stage("testCompressorDistortion");
     testCompressorDistortion();
     stage("testStressAllEffects");

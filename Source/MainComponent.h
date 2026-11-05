@@ -70,13 +70,13 @@ private:
     void chooseReampFile();
     void updateRecordButton();
 
-    // Файл на входе (вместо гитары или вместе с ней)
-    void setupInputPlayer();
-    void saveInputPlayerSettings();
-    void showInputMenu();
-    void chooseInputFile();
-    void toggleInputFile();
-    void updateInputSource();
+    // Сэмплер на входе: гитара запускает сэмпл на высоте сыгранной ноты
+    void setupSampler();
+    void saveSamplerSettings();
+    void showSamplerMenu();
+    void chooseSample();
+    void toggleSampler();
+    void updateSamplerDisplay();
 
     // Драм-машина
     void setupDrums();
@@ -125,7 +125,7 @@ private:
     IconButton tunerButton { "Tuner (Esc to close)", Icons::Id::tuner };
     IconButton midiButton  { "MIDI: pedals, footswitches, program change", Icons::Id::midi };
     StageStrip stage;
-    std::unique_ptr<juce::FileChooser> reampChooser, inputFileChooser;
+    std::unique_ptr<juce::FileChooser> reampChooser, sampleChooser;
 
     // Кнопка с отдельной реакцией на правый клик (меню вместо нажатия)
     struct RightClickButton : public juce::TextButton
@@ -155,23 +155,8 @@ private:
     float cpuDisplay = 0.0f, interfaceScale = 1.0f;
     int cpuTicks = 0;
 
-    // Подпись, по клику - меню (IN: источник входа)
-    struct ClickableLabel : public juce::Label
-    {
-        std::function<void()> onClick;
-
-        void mouseUp(const juce::MouseEvent& e) override
-        {
-            if (onClick != nullptr && e.mouseWasClicked())
-                onClick();
-        }
-    };
-
     // Входной/выходной gain и индикаторы
-    ClickableLabel inputLabel;
-    juce::Label    outputLabel;
-    IconButton     inputPlayButton { "Input file: play / stop", Icons::Id::play, IconButton::Style::flat };
-    juce::String   inputSourceShown;
+    juce::Label  inputLabel, outputLabel;
     juce::Slider inputKnob, outputKnob;
     LevelMeter inputMeter  { "IN" };
     LevelMeter outputMeter { "OUT" };

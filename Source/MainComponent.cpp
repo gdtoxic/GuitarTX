@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "PitchDetector.h"
 #include "NoiseGateProcessor.h"
 #include "OverdriveProcessor.h"
 #include "CabinetProcessor.h"
@@ -122,7 +123,7 @@ MainComponent::MainComponent()
 
     setupMidi();
     setupRecorder();
-    setupInputPlayer();
+    setupSampler();
     setupDrums();
     setupLooper();
     setupSnapshots();
@@ -164,8 +165,7 @@ MainComponent::~MainComponent()
     audioEngine.getRecorder().onStoppedAutomatically = nullptr;
     audioEngine.getRecorder().stopReamp();
     audioEngine.getRecorder().stop();
-    audioEngine.getInputPlayer().stop();
-    saveInputPlayerSettings();
+    saveSamplerSettings();
 
     saveStateIfChanged();
     saveDeviceState();
@@ -396,7 +396,7 @@ void MainComponent::setupMidi()
     };
     midi.onToggleDrums = [this] { toggleDrums(); };
     midi.onListen      = [this] { drumAssistant.toggleListen(); };
-    midi.onToggleInputFile = [this] { toggleInputFile(); };
+    midi.onToggleSampler = [this] { toggleSampler(); };
 
     // Режим Hold: пока держишь - включено
     midi.onHold = [this](MidiController::Kind kind, bool down)
@@ -448,7 +448,7 @@ void MainComponent::setupMidi()
             case K::looperStop:
             case K::looperUndo:
             case K::looperClear:
-            case K::inputFile:
+            case K::sampler:
                 break;
         }
     };
@@ -478,7 +478,7 @@ void MainComponent::setupMidi()
             case MidiController::Kind::drums:
             case MidiController::Kind::listen:
             case MidiController::Kind::looper:
-            case MidiController::Kind::inputFile:
+            case MidiController::Kind::sampler:
                 break;
         }
     };
@@ -524,166 +524,183 @@ void MainComponent::setupRecorder()
 }
 
 //==============================================================================
-// Файл на входе
-void MainComponent::setupInputPlayer()
+// Сэмплер на входе
+namespace
 {
-    if (auto saved = settings.loadXml("inputFile"))
-        audioEngine.getInputPlayer().restoreFromXml(*saved);
-
-    inputLabel.setMouseCursor(juce::MouseCursor::PointingHandCursor);
-    inputLabel.onClick = [this] { showInputMenu(); };
-
-    inputPlayButton.setAccentColour(GuitarTXLookAndFeel::accent);
-    inputPlayButton.setIconColour(GuitarTXLookAndFeel::accent);
-    inputPlayButton.onClick = [this] { toggleInputFile(); };
-    addChildComponent(inputPlayButton);
-
-    updateInputSource();
-}
-
-void MainComponent::saveInputPlayerSettings()
-{
-    settings.saveXml("inputFile", audioEngine.getInputPlayer().createXml().get());
-}
-
-void MainComponent::toggleInputFile()
-{
-    auto& player = audioEngine.getInputPlayer();
-
-    if (! player.isLoaded())
+    juce::String noteName(int midiNote)
     {
-        chooseInputFile();
+        return juce::String(PitchDetector::getNoteName(midiNote)) + juce::String(PitchDetector::getOctave(midiNote));
+    }
+}
+
+void MainComponent::setupSampler()
+{
+    if (auto saved = settings.loadXml("sampler"))
+        audioEngine.getSampler().restoreFromXml(*saved);
+
+    stage.onInputButton = [this] { toggleSampler(); };
+    stage.onInputMenu   = [this] { showSamplerMenu(); };
+
+    updateSamplerDisplay();
+}
+
+void MainComponent::saveSamplerSettings()
+{
+    settings.saveXml("sampler", audioEngine.getSampler().createXml().get());
+}
+
+void MainComponent::toggleSampler()
+{
+    auto& sampler = audioEngine.getSampler();
+
+    if (! sampler.isLoaded())
+    {
+        chooseSample();
         return;
     }
 
-    player.togglePlay();
-
-    if (player.isPlaying())
-        showTransientStatus("Input file: " + player.getFile().getFileName()
-                            + (player.getMode() == InputFilePlayer::Mode::replace ? "  (instead of the guitar)"
-                                                                                  : "  (mixed with the guitar)"), 4.0);
-
-    updateInputSource();
+    sampler.setEnabled(! sampler.isEnabled());
+    showTransientStatus(sampler.isEnabled() ? "Sampler on: the guitar plays " + sampler.getFile().getFileName()
+                                            : juce::String("Sampler off: guitar"), 3.0);
+    saveSamplerSettings();
+    updateSamplerDisplay();
 }
 
-void MainComponent::showInputMenu()
+void MainComponent::showSamplerMenu()
 {
-    using Mode = InputFilePlayer::Mode;
-    auto& player = audioEngine.getInputPlayer();
-    const bool loaded = player.isLoaded();
-    const float level = player.getLevelDb();
+    using Sens = InputSampler::Sensitivity;
+    auto& sampler = audioEngine.getSampler();
+    const bool loaded = sampler.isLoaded();
+
+    // Основная нота: авто (найденная при загрузке) или вручную по октавам
+    juce::PopupMenu roots;
+    const int detected = sampler.getDetectedRoot();
+    roots.addItem(1000, "Auto (" + (detected >= 0 ? noteName(detected) : juce::String("no pitch found, C4")) + ")",
+                  true, sampler.getRootOverride() < 0);
+
+    for (int octave = 0; octave <= 6; ++octave)
+    {
+        juce::PopupMenu notes;
+
+        for (int n = 0; n < 12; ++n)
+        {
+            const int midiNote = (octave + 1) * 12 + n;
+            notes.addItem(1000 + 1 + midiNote, noteName(midiNote), true, sampler.getRootOverride() == midiNote);
+        }
+
+        roots.addSubMenu("Octave " + juce::String(octave), notes, true, nullptr,
+                         sampler.getRootOverride() >= (octave + 1) * 12 && sampler.getRootOverride() < (octave + 2) * 12);
+    }
+
+    juce::PopupMenu transpose;
+    for (const int st : { 24, 12, 7, 5, 0, -5, -7, -12, -24 })
+        transpose.addItem(2000 + 100 + st, (st > 0 ? "+" : "") + juce::String(st)
+                                               + (std::abs(st) == 12 ? " (octave)" : std::abs(st) == 24 ? " (2 octaves)" : ""),
+                          true, sampler.getTranspose() == st);
+
+    juce::PopupMenu sensitivity;
+    sensitivity.addItem(3000, "Low (hard picking only)", true, sampler.getSensitivity() == Sens::low);
+    sensitivity.addItem(3001, "Medium",                  true, sampler.getSensitivity() == Sens::medium);
+    sensitivity.addItem(3002, "High (light notes too)",  true, sampler.getSensitivity() == Sens::high);
 
     juce::PopupMenu levels;
     for (const int db : { 6, 3, 0, -3, -6, -12, -18 })
-        levels.addItem(100 + db, (db > 0 ? "+" : "") + juce::String(db) + " dB", true, juce::roundToInt(level) == db);
+        levels.addItem(4000 + 100 + db, (db > 0 ? "+" : "") + juce::String(db) + " dB", true,
+                       juce::roundToInt(sampler.getLevelDb()) == db);
 
     juce::PopupMenu menu;
-    menu.addSectionHeader(loaded ? "Input file: " + player.getFile().getFileName() : juce::String("Input file"));
-    menu.addItem(1, loaded ? "Load another file..." : "Load a file (WAV, AIFF, FLAC, MP3)...");
-    menu.addItem(2, player.isPlaying() ? "Stop" : "Play", loaded);
-    menu.addItem(3, "Loop", true, player.isLooping());
+    menu.addSectionHeader(loaded ? "Sampler: " + sampler.getFile().getFileName() : juce::String("Sampler"));
+    menu.addItem(1, loaded ? "Load another sample..." : "Load a sample (WAV, AIFF, FLAC, MP3)...");
+    menu.addItem(2, "Sampler on (the guitar plays the sample)", loaded, sampler.isEnabled() && loaded);
     menu.addSeparator();
-    menu.addItem(10, "Replace the guitar while playing", true, player.getMode() == Mode::replace);
-    menu.addItem(11, "Mix with the guitar", true, player.getMode() == Mode::mix);
-    menu.addSubMenu("File level", levels);
+    menu.addItem(3, "Follow pitch (sample at the note you play)", true, sampler.getFollowPitch());
+    menu.addSubMenu("Root note of the sample", roots, sampler.getFollowPitch());
+    menu.addSubMenu("Transpose", transpose);
+    menu.addItem(4, "Dynamics (louder when you pick harder)", true, sampler.getDynamics());
+    menu.addSubMenu("Pick sensitivity", sensitivity);
+    menu.addSubMenu("Level", levels);
     menu.addSeparator();
-    menu.addItem(20, "Unload file", loaded);
+    menu.addItem(5, "Unload sample", loaded);
 
     juce::Component::SafePointer<MainComponent> safeThis(this);
 
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&inputLabel),
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&stage.getInputMenuTarget()),
                        [safeThis](int result)
                        {
                            if (safeThis == nullptr || result == 0)
                                return;
 
-                           auto& p = safeThis->audioEngine.getInputPlayer();
+                           auto& sm = safeThis->audioEngine.getSampler();
 
-                           switch (result)
-                           {
-                               case 1:  safeThis->chooseInputFile(); return;
-                               case 2:  safeThis->toggleInputFile(); return;
-                               case 3:  p.setLooping(! p.isLooping()); break;
-                               case 10: p.setMode(Mode::replace); break;
-                               case 11: p.setMode(Mode::mix); break;
-                               case 20: p.unload(); break;
-                               default:
-                                   if (result >= 100 - 18 && result <= 100 + 6)
-                                       p.setLevelDb((float) (result - 100));
-                                   break;
-                           }
+                           if (result == 1)       { safeThis->chooseSample(); return; }
+                           else if (result == 2)  { safeThis->toggleSampler(); return; }
+                           else if (result == 3)  sm.setFollowPitch(! sm.getFollowPitch());
+                           else if (result == 4)  sm.setDynamics(! sm.getDynamics());
+                           else if (result == 5)  sm.unload();
+                           else if (result >= 4000) sm.setLevelDb((float) (result - 4100));
+                           else if (result >= 3000) sm.setSensitivity((Sens) (result - 3000));
+                           else if (result >= 2000) sm.setTranspose(result - 2100);
+                           else if (result == 1000) sm.setRootOverride(InputSampler::autoRoot);
+                           else if (result > 1000)  sm.setRootOverride(result - 1001);
 
-                           safeThis->saveInputPlayerSettings();
-                           safeThis->updateInputSource();
+                           safeThis->saveSamplerSettings();
+                           safeThis->updateSamplerDisplay();
                        });
 }
 
-void MainComponent::chooseInputFile()
+void MainComponent::chooseSample()
 {
-    auto& player = audioEngine.getInputPlayer();
-    const auto start = player.getFile().existsAsFile() ? player.getFile().getParentDirectory()
-                                                       : audioEngine.getRecorder().getFolder();
+    auto& sampler = audioEngine.getSampler();
+    const auto start = sampler.getFile().existsAsFile() ? sampler.getFile().getParentDirectory()
+                                                        : audioEngine.getRecorder().getFolder();
 
-    inputFileChooser = std::make_unique<juce::FileChooser>("Audio file for the input", start, InputFilePlayer::getWildcard());
+    sampleChooser = std::make_unique<juce::FileChooser>("Sample for the guitar", start, InputSampler::getWildcard());
 
     juce::Component::SafePointer<MainComponent> safeThis(this);
 
-    inputFileChooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                                  [safeThis](const juce::FileChooser& chooser)
-                                  {
-                                      const auto file = chooser.getResult();
+    sampleChooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                               [safeThis](const juce::FileChooser& chooser)
+                               {
+                                   const auto file = chooser.getResult();
 
-                                      if (safeThis == nullptr || ! file.existsAsFile())
-                                          return;
+                                   if (safeThis == nullptr || ! file.existsAsFile())
+                                       return;
 
-                                      auto& p = safeThis->audioEngine.getInputPlayer();
-                                      juce::String error;
+                                   auto& sm = safeThis->audioEngine.getSampler();
+                                   juce::String error;
 
-                                      if (p.load(file, error))
-                                      {
-                                          p.play();
-                                          safeThis->showTransientStatus("Input file: " + file.getFileName()
-                                                                        + "  -  click IN for loop / mix options", 5.0);
-                                      }
-                                      else
-                                      {
-                                          safeThis->showTransientStatus("Input file failed: " + error, 8.0);
-                                      }
+                                   if (sm.load(file, error))
+                                   {
+                                       sm.setEnabled(true);
+                                       const int root = sm.getDetectedRoot();
+                                       safeThis->showTransientStatus("Sampler: " + file.getFileName() + "  -  root "
+                                                                     + (root >= 0 ? noteName(root) : juce::String("not found (set it in the menu)"))
+                                                                     + ". Play a note!", 6.0);
+                                   }
+                                   else
+                                   {
+                                       safeThis->showTransientStatus("Sample failed: " + error, 8.0);
+                                   }
 
-                                      safeThis->saveInputPlayerSettings();
-                                      safeThis->updateInputSource();
-                                  });
+                                   safeThis->saveSamplerSettings();
+                                   safeThis->updateSamplerDisplay();
+                               });
 }
 
-void MainComponent::updateInputSource()
+void MainComponent::updateSamplerDisplay()
 {
-    auto& player = audioEngine.getInputPlayer();
+    auto& sampler = audioEngine.getSampler();
+    const int note = sampler.getLastNote();
 
-    if (player.pollFinished())
-        showTransientStatus("Input file finished: " + player.getFile().getFileName(), 3.0);
+    juce::String meta;
 
-    const bool loaded = player.isLoaded();
-    const bool playing = player.isPlaying();
-    const bool replace = player.getMode() == InputFilePlayer::Mode::replace;
+    if (sampler.isActive())
+        meta = sampler.getFollowPitch() ? (note >= 0 ? noteName(note) : juce::String("play"))
+                                        : juce::String("fixed");
+    else if (sampler.isLoaded())
+        meta = "off";
 
-    // IN - гитара; FILE - файл вместо гитары; IN+F - вместе
-    const auto text = juce::String(playing ? (replace ? "FILE" : "IN+F") : "IN") + juce::String::fromUTF8(" \xe2\x96\xbe");
-    const auto state = text + (loaded ? "1" : "0");
-
-    if (state == inputSourceShown)
-        return;
-
-    inputSourceShown = state;
-    inputLabel.setText(text, juce::dontSendNotification);
-    inputLabel.setColour(juce::Label::textColourId, playing ? GuitarTXLookAndFeel::accent : juce::Colour(0xff9aa0a6));
-    inputLabel.setTooltip(loaded ? "Input: " + player.getFile().getFileName() + "  -  click for play / loop / mix"
-                                 : juce::String("Input source: click to play an audio file through the rig"));
-
-    inputPlayButton.setVisible(loaded);
-    inputPlayButton.setIcon(playing ? Icons::Id::stop : Icons::Id::play);
-    inputPlayButton.setToggleState(playing, juce::dontSendNotification);
-    inputPlayButton.setTooltip(loaded ? (playing ? "Stop " : "Play ") + player.getFile().getFileName()
-                                      : juce::String());
+    stage.setInputSource(sampler.isLoaded(), sampler.isActive(), sampler.getFile().getFileNameWithoutExtension(), meta);
 }
 
 //==============================================================================
@@ -1429,7 +1446,7 @@ void MainComponent::timerCallback()
     updateMasterButton();
     updateDrumButtons();
     updateLooperButton();
-    updateInputSource();
+    updateSamplerDisplay();
 
     if (audioEngine.getRecorder().isRecording() || audioEngine.getRecorder().isReamping())
         updateRecordButton();
@@ -1518,9 +1535,6 @@ void MainComponent::resized()
     };
 
     placeKnob(stage.getInputSlot(),  inputLabel,  inputKnob,  inputMeter,  false);
-
-    // Play / stop файла на входе - слева от ручки IN (видна, когда файл загружен)
-    inputPlayButton.setBounds(juce::Rectangle<int>(22, 22).withPosition(inputKnob.getX() - 4, inputKnob.getY() + 5));
     placeKnob(stage.getOutputSlot(), outputLabel, outputKnob, outputMeter, true);
 
     area.removeFromTop(10);

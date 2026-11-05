@@ -14,7 +14,7 @@
 //    (momentary) это "держу - работает" (Stutter, Freeze), с фиксирующей - обычный вкл/выкл.
 //  - CC -> действие: следующий / предыдущий пресет, тюнер, запись, снапшот A/B,
 //    Tap tempo (общий темп + BPM всех Glitch без Sync), драм-машина Play / Stop и LISTEN,
-//    файл на входе Play / Stop.
+//    сэмплер на входе вкл / выкл.
 //  - Program Change N -> пресет N по общему списку (factory, затем user).
 //
 // MIDI приходит в отдельном потоке: сообщения кладутся в lock-free очередь,
@@ -24,7 +24,7 @@ class MidiController : private juce::MidiInputCallback,
 {
 public:
     enum class Kind { parameter, footswitch, nextPreset, previousPreset, tuner, record, snapshot, tapTempo, drums, listen,
-                      looper, looperStop, looperUndo, looperClear, inputFile };
+                      looper, looperStop, looperUndo, looperClear, sampler };
     // Toggle - каждое нажатие переключает; Hold - включено, пока кнопка нажата (отпустил - выкл).
     // Имена в XML сохранены для совместимости: momentary = Toggle, latching = Hold
     enum class SwitchMode { momentary, latching };
@@ -108,7 +108,7 @@ public:
     std::function<void(double bpm)>      onTapTempo;        // применённый темп
     std::function<void()>                onToggleDrums;
     std::function<void()>                onListen;          // LISTEN драм-машины
-    std::function<void()>                onToggleInputFile; // файл на входе: play / stop
+    std::function<void()>                onToggleSampler; // сэмплер на входе: вкл / выкл
     std::function<void(Kind, bool down)> onHold;            // режим Hold: нажали (true) / отпустили (false)
     std::function<void(bool down)>       onLooperSwitch;    // главная кнопка лупера: каждое нажатие и отпускание
     std::function<void(Kind)>            onLooperAction;    // Stop / Undo / Clear лупера

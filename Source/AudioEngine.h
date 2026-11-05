@@ -8,7 +8,7 @@
 #include "MeterProcessor.h"
 #include "TunerProcessor.h"
 #include "Recorder.h"
-#include "InputFilePlayer.h"
+#include "InputSampler.h"
 #include "DrumMachine.h"
 #include "ListenProcessor.h"
 #include "LooperProcessor.h"
@@ -17,7 +17,7 @@
 //
 // Граф:
 //                                           +-> [основная цепочка] ---------+
-//   Input -> FileIn -> RecIn -> Listen -> MeterIn -> Tuner -> InputGain +              +-> Master -> Fade -> Looper -> Drums -> OutputGain -> MeterOut -> RecOut -> Output
+//   Input -> Sampler -> RecIn -> Listen -> MeterIn -> Tuner -> InputGain +              +-> Master -> Fade -> Looper -> Drums -> OutputGain -> MeterOut -> RecOut -> Output
 //                                           +-> [параллельный эффект 1] ----+
 //                                           +-> [параллельный эффект 2] ----+
 //
@@ -25,7 +25,7 @@
 // Listen - "уши" драм-машины: запись риффа (LISTEN) и атаки для FOLLOW, по сухому сигналу.
 // Drums - драм-машина: барабаны добавляются к гитаре после мастер-секции и Fade
 // (перестройка цепочки при смене пресета их не прерывает).
-// FileIn - файл на входе: вместо гитары (Replace) или вместе с ней (Mix).
+// Sampler - сэмплер на входе: гитара запускает загруженный звук на высоте сыгранной ноты.
 // RecIn / RecOut - рекордер: re-amp и запись DI в начале, запись Wet в самом конце.
 // Tuner - анализ высоты для тюнера и mute всего, что после него.
 // Основная цепочка - эффекты последовательно. Параллельная ветка - каждый эффект
@@ -106,7 +106,7 @@ public:
     DrumMachine& getDrums() noexcept { return *drums; }
     ListenProcessor& getListener() noexcept { return *listener; }
     LooperProcessor& getLooper() noexcept   { return *looper; }
-    InputFilePlayer& getInputPlayer() noexcept { return *inputPlayer; }
+    InputSampler& getSampler() noexcept     { return *sampler; }
 
     // Задержка вход + выход текущего устройства (сэмплы)
     int getRoundTripLatency() const;
@@ -152,7 +152,7 @@ private:
 
     Node::Ptr audioInputNode, audioOutputNode;
     Node::Ptr recorderInNode, recorderOutNode;
-    Node::Ptr inputPlayerNode, listenNode, looperNode, meterInNode, tunerNode, gainNode, masterNode, drumsNode, outputGainNode, fadeNode, meterOutNode;
+    Node::Ptr samplerNode, listenNode, looperNode, meterInNode, tunerNode, gainNode, masterNode, drumsNode, outputGainNode, fadeNode, meterOutNode;
 
     MeterProcessor* meterIn  = nullptr;
     TunerProcessor* tuner    = nullptr;
@@ -162,7 +162,7 @@ private:
     DrumMachine*    drums    = nullptr;
     ListenProcessor* listener = nullptr;
     LooperProcessor* looper   = nullptr;
-    InputFilePlayer* inputPlayer = nullptr;
+    InputSampler*    sampler  = nullptr;
     FadeProcessor*  fade     = nullptr;
     MeterProcessor* meterOut = nullptr;
 

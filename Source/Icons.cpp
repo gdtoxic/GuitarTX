@@ -133,6 +133,12 @@ namespace
                 s.stroke.lineTo(13, 20);
                 break;
 
+            case Id::file:    // аудиофайл: лист с загнутым углом и волна
+                line(s.stroke, { P(14, 3), P(6, 3), P(6, 21), P(18, 21), P(18, 7), P(14, 3) });
+                line(s.stroke, { P(14, 3), P(14, 7), P(18, 7) });
+                line(s.stroke, { P(8.5f, 14), P(10, 14), P(11.2f, 10.5f), P(12.8f, 17.5f), P(14, 14), P(15.5f, 14) });
+                break;
+
             case Id::none:
                 break;
         }

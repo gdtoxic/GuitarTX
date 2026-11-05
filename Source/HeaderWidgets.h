@@ -54,7 +54,7 @@ private:
 };
 
 //==============================================================================
-// Полоса сцены:  [IN] | REC | LOOP: состояние, такты, Undo | DRUMS: play, темп, паттерн | [OUT]
+// Полоса сцены:  [IN] INPUT: гитара / сэмплер | REC | LOOP: состояние, такты, Undo | DRUMS: play, темп, паттерн | [OUT]
 // Ручки IN / OUT принадлежат главному окну и кладутся в getInputSlot / getOutputSlot.
 class StageStrip : public juce::Component
 {
@@ -68,12 +68,17 @@ public:
                    bool canUndo, bool canRedo, bool waitingForBar);
     void setDrums(bool playing, double bpm, const juce::String& pattern);
 
+    // Источник входа: сэмпла нет - гитара; сэмпл загружен, сэмплер вкл / выкл; meta - последняя нота
+    void setInputSource(bool loaded, bool active, const juce::String& sampleName, const juce::String& meta);
+
     // --- Действия
     std::function<void()> onRecord, onRecordMenu;
     std::function<void()> onLoopMain, onLoopUndo, onLoopRedo, onLoopOpen;
     std::function<void()> onDrumsToggle, onDrumsOpen;
+    std::function<void()> onInputButton, onInputMenu;   // сэмплер вкл / выкл (или загрузка) и меню
 
     juce::Component& getRecordMenuTarget() noexcept;
+    juce::Component& getInputMenuTarget() noexcept;
 
     // Открыты ли окна лупера / барабанов (подсветка разделов)
     void setWindowsOpen(bool looperOpen, bool drumsOpen);
@@ -87,14 +92,15 @@ public:
 private:
     class Info;
 
+    IconButton inputButton { "Sampler", Icons::Id::file,  IconButton::Style::round };
     IconButton recButton   { "Record", Icons::Id::record, IconButton::Style::round };
     IconButton loopButton  { "Looper", Icons::Id::loop,   IconButton::Style::round };
     IconButton drumsButton { "Drums",  Icons::Id::play,   IconButton::Style::round };
     IconButton undoButton  { "Undo",   Icons::Id::undo,   IconButton::Style::outlined };
-    std::unique_ptr<Info> recInfo, loopInfo, drumsInfo;
+    std::unique_ptr<Info> inputInfo, recInfo, loopInfo, drumsInfo;
 
     juce::Rectangle<int> inputSlot, outputSlot;
-    std::array<int, 4> separators {};
+    std::array<int, 5> separators {};
     bool redoMode = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(StageStrip)

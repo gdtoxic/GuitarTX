@@ -271,16 +271,21 @@ public:
         const float titleWidth = juce::GlyphArrangement::getStringWidth(titleFont, getName());
         g.drawText(getName(), top.removeFromLeft(titleWidth + 1.0f), juce::Justification::centredLeft, false);
 
-        if (meta.isNotEmpty())
+        // Узкая секция: подпись справа рисуется, только если не наезжает на состояние
+        const auto statusFont = uiFont(12.0f, true), metaFont = uiFont(12.0f);
+        const float statusWidth = status.isNotEmpty() ? juce::GlyphArrangement::getStringWidth(statusFont, status) + 6.0f : 0.0f;
+        const float metaWidth = juce::GlyphArrangement::getStringWidth(metaFont, meta);
+
+        if (meta.isNotEmpty() && statusWidth + metaWidth + 8.0f <= top.getWidth())
         {
-            g.setFont(uiFont(12.0f));
+            g.setFont(metaFont);
             g.setColour(mutedText);
             g.drawText(meta, top, juce::Justification::centredRight, false);
         }
 
         if (status.isNotEmpty())
         {
-            g.setFont(uiFont(12.0f, true));
+            g.setFont(statusFont);
             g.setColour(statusColour);
             g.drawText(status, top.withTrimmedLeft(6.0f), juce::Justification::centredLeft, true);
         }
@@ -321,10 +326,16 @@ private:
 
 //==============================================================================
 StageStrip::StageStrip()
-    : recInfo(std::make_unique<Info>("REC")),
+    : inputInfo(std::make_unique<Info>("INPUT")),
+      recInfo(std::make_unique<Info>("REC")),
       loopInfo(std::make_unique<Info>("LOOP")),
       drumsInfo(std::make_unique<Info>("DRUMS"))
 {
+    inputButton.setAccentColour(GuitarTXLookAndFeel::accent);
+    inputButton.onClick = [this] { if (onInputButton) onInputButton(); };
+
+    inputInfo->onClick = [this] { if (onInputMenu) onInputMenu(); };
+
     recButton.setAccentColour(recordRed);
     recButton.setTooltip("Record DI + processed sound to WAV");
     recButton.onClick = [this] { if (onRecord) onRecord(); };
@@ -353,12 +364,14 @@ StageStrip::StageStrip()
     drumsInfo->setTooltip("Drum machine window: open / close");
     drumsInfo->onClick = [this] { if (onDrumsOpen) onDrumsOpen(); };
 
-    for (juce::Component* c : { (juce::Component*) &recButton, (juce::Component*) recInfo.get(),
+    for (juce::Component* c : { (juce::Component*) &inputButton, (juce::Component*) inputInfo.get(),
+                                (juce::Component*) &recButton, (juce::Component*) recInfo.get(),
                                 (juce::Component*) &loopButton, (juce::Component*) loopInfo.get(),
                                 (juce::Component*) &undoButton,
                                 (juce::Component*) &drumsButton, (juce::Component*) drumsInfo.get() })
         addAndMakeVisible(c);
 
+    setInputSource(false, false, {}, {});
     setRecorder(false, {});
     setLooper(LooperProcessor::State::empty, 0.0, 0, 0.0, false, false, false);
     setDrums(false, 120.0, {});
@@ -369,6 +382,26 @@ StageStrip::~StageStrip() = default;
 juce::Component& StageStrip::getRecordMenuTarget() noexcept
 {
     return *recInfo;
+}
+
+juce::Component& StageStrip::getInputMenuTarget() noexcept
+{
+    return *inputInfo;
+}
+
+void StageStrip::setInputSource(bool loaded, bool active, const juce::String& sampleName, const juce::String& meta)
+{
+    const auto arrow = juce::String::fromUTF8("  \xe2\x96\xbe");
+
+    inputButton.setToggleState(active, juce::dontSendNotification);
+    inputButton.setTooltip(! loaded ? juce::String("Sampler: load a sound - the guitar will play it at the notes you pick")
+                                    : (active ? "Sampler off (back to the guitar)" : "Sampler on: the guitar plays ") + sampleName);
+    inputInfo->setTooltip(! loaded ? juce::String("Input: guitar. Click to load a sample for the guitar to play")
+                                   : sampleName + "  -  click for root note, transpose, sensitivity, level");
+
+    // Вкл: SAMPLER и последняя сыгранная нота; выкл: имя сэмпла и "off"
+    inputInfo->set(active ? juce::String("SAMPLER") : juce::String(), GuitarTXLookAndFeel::accent, meta,
+                   (loaded ? sampleName : juce::String("Guitar")) + arrow);
 }
 
 void StageStrip::setWindowsOpen(bool looperOpen, bool drumsOpen)
@@ -398,13 +431,9 @@ void StageStrip::setLooper(LooperProcessor::State state, double position, int ba
 
     juce::String meta;
 
+    // Такты видны делениями полосы - справа только длина
     if (lengthSeconds > 0.0 && state != S::empty)
-    {
-        if (bars > 0)
-            meta << bars << (bars == 1 ? " bar  " : " bars  ");
-
         meta << juce::String(lengthSeconds, 1) << " s";
-    }
 
     const auto status = state == S::empty ? juce::String() : LooperProcessor::stateName(state).toUpperCase();
     const bool hasLoop = state == S::playing || state == S::overdubbing || state == S::stopped;
@@ -444,30 +473,35 @@ void StageStrip::paint(juce::Graphics& g)
 void StageStrip::resized()
 {
     auto area = getLocalBounds();
-    constexpr int knobSlot = 84, pedal = 46;
+    constexpr int knobSlot = 84, pedal = 40;
 
     inputSlot  = area.removeFromLeft(knobSlot);
     outputSlot = area.removeFromRight(knobSlot);
     separators[0] = area.getX();
-    separators[3] = area.getRight();
+    separators[4] = area.getRight();
 
     auto layoutSection = [pedal](juce::Rectangle<int> section, IconButton& button, juce::Component& info)
     {
-        section = section.reduced(12, 0);
+        section = section.reduced(6, 0);
         button.setBounds(section.removeFromLeft(pedal).withSizeKeepingCentre(pedal, pedal));
         section.removeFromLeft(4);
         info.setBounds(section.reduced(0, 10));
     };
 
-    auto rec = area.removeFromLeft(200);
+    // REC, LOOP, DRUMS - по минимуму под свой текст, всё остальное - INPUT (имя файла, режим, время)
+    constexpr int recWidth = 130, loopWidth = 270, drumsWidth = 176;
+    auto input = area.removeFromLeft(juce::jmax(150, area.getWidth() - recWidth - loopWidth - drumsWidth));
     separators[1] = area.getX();
-    auto drums = area.removeFromRight(260);
-    separators[2] = drums.getX();
+    auto rec = area.removeFromLeft(recWidth);
+    separators[2] = area.getX();
+    auto drums = area.removeFromRight(drumsWidth);
+    separators[3] = drums.getX();
 
+    layoutSection(input, inputButton, *inputInfo);
     layoutSection(rec, recButton, *recInfo);
     layoutSection(drums, drumsButton, *drumsInfo);
 
     auto loop = area;
-    undoButton.setBounds(loop.removeFromRight(76).reduced(10, 0).withSizeKeepingCentre(64, 30));
+    undoButton.setBounds(loop.removeFromRight(74).reduced(4, 0).withSizeKeepingCentre(64, 30));
     layoutSection(loop, loopButton, *loopInfo);
 }

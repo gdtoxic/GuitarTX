@@ -991,7 +991,7 @@
     <ClCompile Include="..\..\Source\HarmonizerProcessor.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\Source\InputFilePlayer.cpp">
+    <ClCompile Include="..\..\Source\InputSampler.cpp">
       <Filter>GuitarTX\Source</Filter>
     </ClCompile>
     <ClCompile Include="C:\Program Files\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.cpp">
@@ -4413,7 +4413,7 @@
     <ClInclude Include="..\..\Source\HarmonizerProcessor.h">
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\Source\InputFilePlayer.h">
+    <ClInclude Include="..\..\Source\InputSampler.h">
       <Filter>GuitarTX\Source</Filter>
     </ClInclude>
     <ClInclude Include="..\..\Source\GlobalTempo.h">

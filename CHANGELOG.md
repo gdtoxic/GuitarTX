@@ -5,10 +5,14 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
 ## [0.5.1] - 2026-11-05
 
 ### Added
-- **Input file**: click **IN** above the input knob to play a WAV / AIFF / FLAC / MP3 through the whole rig —
-  **Replace** (instead of the guitar while it plays) or **Mix** (together with the guitar); Loop, file level
-  (+6 … −18 dB), Play / Stop next to the knob and as a MIDI action (**Input file**). The file is summed to mono
-  like the guitar input, resampled to the device rate; the DI recorder and LISTEN hear it too.
+- **Sampler** on the input (new **INPUT** section in the top strip): load a WAV / AIFF / FLAC / MP3 and the guitar
+  plays it — every pick starts the sample from the beginning (one-shot), transposed to the note you play
+  (single notes). The sample's root note is found on loading (or set by hand); Transpose, Follow pitch off
+  (the sample at its own pitch — hits, stabs, phrases), Dynamics (louder when you pick harder), pick
+  sensitivity, level. While it is on, the rest of the rig hears only the sample. The round button switches it
+  on / off (or loads a sample), the text opens the menu; MIDI action **Sampler**. Latency: a few ms for high
+  notes, ~25 ms for E2, ~35 ms for A1 (the pitch needs two periods of the string).
+- REC, LOOP and DRUMS sections are narrower to make room; the loop shows its length (bars are the segments).
 - **Audio settings**: buffer size and round-trip latency line, a hint for the current driver type and a
   **Driver panel** button (ASIO drivers that offer only one buffer size have it set in their own panel).
 
