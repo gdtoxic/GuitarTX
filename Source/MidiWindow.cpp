@@ -80,6 +80,7 @@ public:
         setupLearn(learnLooperStop, MidiController::Kind::looperStop);
         setupLearn(learnLooperUndo, MidiController::Kind::looperUndo);
         setupLearn(learnLooperClear, MidiController::Kind::looperClear);
+        setupLearn(learnInputFile, MidiController::Kind::inputFile);
         learnLooper.setTooltip("Looper footswitch: press - rec / play / dub, double press - stop, hold 2 s - clear");
 
         cancelButton.onClick = [this] { controller.cancelLearn(); updateState(); };
@@ -159,7 +160,7 @@ public:
         };
 
         groupRow(groupPresets, { &learnNext, &learnPrevious, &learnSnapshot });
-        groupRow(groupTools,   { &learnTuner, &learnRecord, &learnTap });
+        groupRow(groupTools,   { &learnTuner, &learnRecord, &learnTap, &learnInputFile });
         groupRow(groupDrums,   { &learnDrums, &learnListen });
         groupRow(groupLooper,  { &learnLooper, &learnLooperStop, &learnLooperUndo, &learnLooperClear });
 
@@ -289,7 +290,7 @@ private:
                      learnTuner { "Tuner" }, learnRecord { "Record" },
                      learnSnapshot { "Snapshot A/B" }, learnTap { "Tap tempo" }, learnDrums { "Play / stop" },
                      learnListen { "LISTEN" }, learnLooper { "Rec / play / dub" }, learnLooperStop { "Stop" },
-                     learnLooperUndo { "Undo" }, learnLooperClear { "Clear" }, cancelButton { "Cancel learn" };
+                     learnLooperUndo { "Undo" }, learnLooperClear { "Clear" }, learnInputFile { "Input file" }, cancelButton { "Cancel learn" };
 };
 
 //==============================================================================

@@ -8,6 +8,7 @@
 #include "MeterProcessor.h"
 #include "TunerProcessor.h"
 #include "Recorder.h"
+#include "InputFilePlayer.h"
 #include "DrumMachine.h"
 #include "ListenProcessor.h"
 #include "LooperProcessor.h"
@@ -15,15 +16,16 @@
 // Аудиодвижок: устройство + граф обработки.
 //
 // Граф:
-//                                 +-> [основная цепочка] ---------+
-//   Input -> RecIn -> Listen -> MeterIn -> Tuner -> InputGain +              +-> Master -> Fade -> Looper -> Drums -> OutputGain -> MeterOut -> RecOut -> Output
-//                                 +-> [параллельный эффект 1] ----+
-//                                 +-> [параллельный эффект 2] ----+
+//                                           +-> [основная цепочка] ---------+
+//   Input -> FileIn -> RecIn -> Listen -> MeterIn -> Tuner -> InputGain +              +-> Master -> Fade -> Looper -> Drums -> OutputGain -> MeterOut -> RecOut -> Output
+//                                           +-> [параллельный эффект 1] ----+
+//                                           +-> [параллельный эффект 2] ----+
 //
 // Looper - лупер: пишет обработанную гитару (без барабанов), смена пресета луп не прерывает.
 // Listen - "уши" драм-машины: запись риффа (LISTEN) и атаки для FOLLOW, по сухому сигналу.
 // Drums - драм-машина: барабаны добавляются к гитаре после мастер-секции и Fade
 // (перестройка цепочки при смене пресета их не прерывает).
+// FileIn - файл на входе: вместо гитары (Replace) или вместе с ней (Mix).
 // RecIn / RecOut - рекордер: re-amp и запись DI в начале, запись Wet в самом конце.
 // Tuner - анализ высоты для тюнера и mute всего, что после него.
 // Основная цепочка - эффекты последовательно. Параллельная ветка - каждый эффект
@@ -104,6 +106,7 @@ public:
     DrumMachine& getDrums() noexcept { return *drums; }
     ListenProcessor& getListener() noexcept { return *listener; }
     LooperProcessor& getLooper() noexcept   { return *looper; }
+    InputFilePlayer& getInputPlayer() noexcept { return *inputPlayer; }
 
     // Задержка вход + выход текущего устройства (сэмплы)
     int getRoundTripLatency() const;
@@ -149,7 +152,7 @@ private:
 
     Node::Ptr audioInputNode, audioOutputNode;
     Node::Ptr recorderInNode, recorderOutNode;
-    Node::Ptr listenNode, looperNode, meterInNode, tunerNode, gainNode, masterNode, drumsNode, outputGainNode, fadeNode, meterOutNode;
+    Node::Ptr inputPlayerNode, listenNode, looperNode, meterInNode, tunerNode, gainNode, masterNode, drumsNode, outputGainNode, fadeNode, meterOutNode;
 
     MeterProcessor* meterIn  = nullptr;
     TunerProcessor* tuner    = nullptr;
@@ -159,6 +162,7 @@ private:
     DrumMachine*    drums    = nullptr;
     ListenProcessor* listener = nullptr;
     LooperProcessor* looper   = nullptr;
+    InputFilePlayer* inputPlayer = nullptr;
     FadeProcessor*  fade     = nullptr;
     MeterProcessor* meterOut = nullptr;
 

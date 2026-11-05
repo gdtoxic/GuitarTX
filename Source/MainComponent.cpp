@@ -122,6 +122,7 @@ MainComponent::MainComponent()
 
     setupMidi();
     setupRecorder();
+    setupInputPlayer();
     setupDrums();
     setupLooper();
     setupSnapshots();
@@ -163,6 +164,8 @@ MainComponent::~MainComponent()
     audioEngine.getRecorder().onStoppedAutomatically = nullptr;
     audioEngine.getRecorder().stopReamp();
     audioEngine.getRecorder().stop();
+    audioEngine.getInputPlayer().stop();
+    saveInputPlayerSettings();
 
     saveStateIfChanged();
     saveDeviceState();
@@ -393,6 +396,7 @@ void MainComponent::setupMidi()
     };
     midi.onToggleDrums = [this] { toggleDrums(); };
     midi.onListen      = [this] { drumAssistant.toggleListen(); };
+    midi.onToggleInputFile = [this] { toggleInputFile(); };
 
     // Режим Hold: пока держишь - включено
     midi.onHold = [this](MidiController::Kind kind, bool down)
@@ -444,6 +448,7 @@ void MainComponent::setupMidi()
             case K::looperStop:
             case K::looperUndo:
             case K::looperClear:
+            case K::inputFile:
                 break;
         }
     };
@@ -473,6 +478,7 @@ void MainComponent::setupMidi()
             case MidiController::Kind::drums:
             case MidiController::Kind::listen:
             case MidiController::Kind::looper:
+            case MidiController::Kind::inputFile:
                 break;
         }
     };
@@ -515,6 +521,169 @@ void MainComponent::setupRecorder()
     recorder.onStoppedAutomatically = [this](const juce::String& message) { showTransientStatus(message, 8.0); };
 
     updateRecordButton();
+}
+
+//==============================================================================
+// Файл на входе
+void MainComponent::setupInputPlayer()
+{
+    if (auto saved = settings.loadXml("inputFile"))
+        audioEngine.getInputPlayer().restoreFromXml(*saved);
+
+    inputLabel.setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    inputLabel.onClick = [this] { showInputMenu(); };
+
+    inputPlayButton.setAccentColour(GuitarTXLookAndFeel::accent);
+    inputPlayButton.setIconColour(GuitarTXLookAndFeel::accent);
+    inputPlayButton.onClick = [this] { toggleInputFile(); };
+    addChildComponent(inputPlayButton);
+
+    updateInputSource();
+}
+
+void MainComponent::saveInputPlayerSettings()
+{
+    settings.saveXml("inputFile", audioEngine.getInputPlayer().createXml().get());
+}
+
+void MainComponent::toggleInputFile()
+{
+    auto& player = audioEngine.getInputPlayer();
+
+    if (! player.isLoaded())
+    {
+        chooseInputFile();
+        return;
+    }
+
+    player.togglePlay();
+
+    if (player.isPlaying())
+        showTransientStatus("Input file: " + player.getFile().getFileName()
+                            + (player.getMode() == InputFilePlayer::Mode::replace ? "  (instead of the guitar)"
+                                                                                  : "  (mixed with the guitar)"), 4.0);
+
+    updateInputSource();
+}
+
+void MainComponent::showInputMenu()
+{
+    using Mode = InputFilePlayer::Mode;
+    auto& player = audioEngine.getInputPlayer();
+    const bool loaded = player.isLoaded();
+    const float level = player.getLevelDb();
+
+    juce::PopupMenu levels;
+    for (const int db : { 6, 3, 0, -3, -6, -12, -18 })
+        levels.addItem(100 + db, (db > 0 ? "+" : "") + juce::String(db) + " dB", true, juce::roundToInt(level) == db);
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader(loaded ? "Input file: " + player.getFile().getFileName() : juce::String("Input file"));
+    menu.addItem(1, loaded ? "Load another file..." : "Load a file (WAV, AIFF, FLAC, MP3)...");
+    menu.addItem(2, player.isPlaying() ? "Stop" : "Play", loaded);
+    menu.addItem(3, "Loop", true, player.isLooping());
+    menu.addSeparator();
+    menu.addItem(10, "Replace the guitar while playing", true, player.getMode() == Mode::replace);
+    menu.addItem(11, "Mix with the guitar", true, player.getMode() == Mode::mix);
+    menu.addSubMenu("File level", levels);
+    menu.addSeparator();
+    menu.addItem(20, "Unload file", loaded);
+
+    juce::Component::SafePointer<MainComponent> safeThis(this);
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&inputLabel),
+                       [safeThis](int result)
+                       {
+                           if (safeThis == nullptr || result == 0)
+                               return;
+
+                           auto& p = safeThis->audioEngine.getInputPlayer();
+
+                           switch (result)
+                           {
+                               case 1:  safeThis->chooseInputFile(); return;
+                               case 2:  safeThis->toggleInputFile(); return;
+                               case 3:  p.setLooping(! p.isLooping()); break;
+                               case 10: p.setMode(Mode::replace); break;
+                               case 11: p.setMode(Mode::mix); break;
+                               case 20: p.unload(); break;
+                               default:
+                                   if (result >= 100 - 18 && result <= 100 + 6)
+                                       p.setLevelDb((float) (result - 100));
+                                   break;
+                           }
+
+                           safeThis->saveInputPlayerSettings();
+                           safeThis->updateInputSource();
+                       });
+}
+
+void MainComponent::chooseInputFile()
+{
+    auto& player = audioEngine.getInputPlayer();
+    const auto start = player.getFile().existsAsFile() ? player.getFile().getParentDirectory()
+                                                       : audioEngine.getRecorder().getFolder();
+
+    inputFileChooser = std::make_unique<juce::FileChooser>("Audio file for the input", start, InputFilePlayer::getWildcard());
+
+    juce::Component::SafePointer<MainComponent> safeThis(this);
+
+    inputFileChooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                  [safeThis](const juce::FileChooser& chooser)
+                                  {
+                                      const auto file = chooser.getResult();
+
+                                      if (safeThis == nullptr || ! file.existsAsFile())
+                                          return;
+
+                                      auto& p = safeThis->audioEngine.getInputPlayer();
+                                      juce::String error;
+
+                                      if (p.load(file, error))
+                                      {
+                                          p.play();
+                                          safeThis->showTransientStatus("Input file: " + file.getFileName()
+                                                                        + "  -  click IN for loop / mix options", 5.0);
+                                      }
+                                      else
+                                      {
+                                          safeThis->showTransientStatus("Input file failed: " + error, 8.0);
+                                      }
+
+                                      safeThis->saveInputPlayerSettings();
+                                      safeThis->updateInputSource();
+                                  });
+}
+
+void MainComponent::updateInputSource()
+{
+    auto& player = audioEngine.getInputPlayer();
+
+    if (player.pollFinished())
+        showTransientStatus("Input file finished: " + player.getFile().getFileName(), 3.0);
+
+    const bool loaded = player.isLoaded();
+    const bool playing = player.isPlaying();
+    const bool replace = player.getMode() == InputFilePlayer::Mode::replace;
+
+    // IN - гитара; FILE - файл вместо гитары; IN+F - вместе
+    const auto text = juce::String(playing ? (replace ? "FILE" : "IN+F") : "IN") + juce::String::fromUTF8(" \xe2\x96\xbe");
+    const auto state = text + (loaded ? "1" : "0");
+
+    if (state == inputSourceShown)
+        return;
+
+    inputSourceShown = state;
+    inputLabel.setText(text, juce::dontSendNotification);
+    inputLabel.setColour(juce::Label::textColourId, playing ? GuitarTXLookAndFeel::accent : juce::Colour(0xff9aa0a6));
+    inputLabel.setTooltip(loaded ? "Input: " + player.getFile().getFileName() + "  -  click for play / loop / mix"
+                                 : juce::String("Input source: click to play an audio file through the rig"));
+
+    inputPlayButton.setVisible(loaded);
+    inputPlayButton.setIcon(playing ? Icons::Id::stop : Icons::Id::play);
+    inputPlayButton.setToggleState(playing, juce::dontSendNotification);
+    inputPlayButton.setTooltip(loaded ? (playing ? "Stop " : "Play ") + player.getFile().getFileName()
+                                      : juce::String());
 }
 
 //==============================================================================
@@ -1260,6 +1429,7 @@ void MainComponent::timerCallback()
     updateMasterButton();
     updateDrumButtons();
     updateLooperButton();
+    updateInputSource();
 
     if (audioEngine.getRecorder().isRecording() || audioEngine.getRecorder().isReamping())
         updateRecordButton();
@@ -1348,6 +1518,9 @@ void MainComponent::resized()
     };
 
     placeKnob(stage.getInputSlot(),  inputLabel,  inputKnob,  inputMeter,  false);
+
+    // Play / stop файла на входе - слева от ручки IN (видна, когда файл загружен)
+    inputPlayButton.setBounds(juce::Rectangle<int>(22, 22).withPosition(inputKnob.getX() - 4, inputKnob.getY() + 5));
     placeKnob(stage.getOutputSlot(), outputLabel, outputKnob, outputMeter, true);
 
     area.removeFromTop(10);

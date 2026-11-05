@@ -28,6 +28,7 @@ namespace
             case K::looperStop:     return "looperStop";
             case K::looperUndo:     return "looperUndo";
             case K::looperClear:    return "looperClear";
+            case K::inputFile:      return "inputFile";
         }
         return "parameter";
     }
@@ -36,7 +37,7 @@ namespace
     {
         using K = MidiController::Kind;
         for (auto kind : { K::parameter, K::footswitch, K::nextPreset, K::previousPreset, K::tuner, K::record, K::snapshot, K::tapTempo, K::drums, K::listen,
-                           K::looper, K::looperStop, K::looperUndo, K::looperClear })
+                           K::looper, K::looperStop, K::looperUndo, K::looperClear, K::inputFile })
             if (kindToString(kind) == text)
                 return kind;
         return std::nullopt;
@@ -84,6 +85,7 @@ bool MidiController::supportsHold(Kind kind) noexcept
         case Kind::looperStop:
         case Kind::looperUndo:
         case Kind::looperClear:
+        case Kind::inputFile:
             return false;
     }
 
@@ -384,6 +386,11 @@ void MidiController::applyController(int channel, int controller, int value)
                 if (newPress && onLooperAction)
                     onLooperAction(mapping.kind);
                 break;
+
+            case Kind::inputFile:
+                if (newPress && onToggleInputFile)
+                    onToggleInputFile();
+                break;
         }
     }
 }
@@ -589,6 +596,7 @@ juce::String MidiController::describeTarget(const LearnTarget& target) const
         case Kind::looperStop:     return "Looper stop";
         case Kind::looperUndo:     return "Looper undo / redo";
         case Kind::looperClear:    return "Looper clear";
+        case Kind::inputFile:      return "Input file play/stop";
     }
 
     return {};

@@ -35,6 +35,7 @@
 #include "ModulationProcessor.h"
 #include "WahProcessor.h"
 #include "HarmonizerProcessor.h"
+#include "InputFilePlayer.h"
 #include <cstdio>
 #include <cstdlib>
 
@@ -2930,6 +2931,77 @@ static void testStressAllEffects()
     }
 }
 
+// Файл на входе: Replace глушит гитару, Mix складывает, после конца файла (без петли) снова гитара
+static void testInputFilePlayer()
+{
+    const double sr = 48000.0;
+    const int block = 256;
+    const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("guitartx_input_test.wav");
+    file.deleteFile();
+
+    {
+        // 0.5 с моно при 44.1 кГц: постоянный уровень 0.3 (проверка пересчёта частоты)
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
+        auto writer = wav.createWriterFor(stream, juce::AudioFormatWriterOptions {}.withSampleRate(44100.0).withNumChannels(1).withBitsPerSample(24));
+        juce::AudioBuffer<float> data(1, 22050);
+        for (int i = 0; i < data.getNumSamples(); ++i)
+            data.setSample(0, i, 0.3f);
+        writer->writeFromAudioSampleBuffer(data, 0, data.getNumSamples());
+    }
+
+    InputFilePlayer player;
+    player.setPlayConfigDetails(2, 2, sr, block);
+    player.prepareToPlay(sr, block);
+
+    juce::String error;
+    CHECK(player.load(file, error), "input file load: %s", error.toRawUTF8());
+    player.setLooping(false);
+
+    juce::AudioBuffer<float> buf(2, block);
+    juce::MidiBuffer midi;
+
+    // Уровень на выходе после blocks блоков (гитара = постоянные 0.1)
+    auto run = [&](int blocks)
+    {
+        float last = 0.0f;
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                for (int k = 0; k < block; ++k)
+                    buf.setSample(ch, k, 0.1f);
+
+            player.processBlock(buf, midi);
+            last = buf.getSample(1, block - 1);
+        }
+        return last;
+    };
+
+    const float idle = run(4);
+
+    player.setMode(InputFilePlayer::Mode::replace);
+    player.play();
+    juce::Thread::sleep(300);   // фоновое чтение
+    const float replaced = run(10);
+
+    player.setMode(InputFilePlayer::Mode::mix);
+    const float mixed = run(10);
+
+    // До конца файла (0.5 с) и дальше: без петли файл останавливается, гитара возвращается
+    const float after = run(80);
+    const bool finished = player.pollFinished();
+
+    std::printf("Input file: idle %.3f, replace %.3f, mix %.3f, after end %.3f, finished %d\n",
+                idle, replaced, mixed, after, finished ? 1 : 0);
+    CHECK(std::abs(idle - 0.1f) < 1.0e-4f, "input file: guitar passes when not playing");
+    CHECK(std::abs(replaced - 0.3f) < 0.01f, "input file: replace mode");
+    CHECK(std::abs(mixed - 0.4f) < 0.01f, "input file: mix mode");
+    CHECK(std::abs(after - 0.1f) < 0.01f && finished && ! player.isPlaying(), "input file: back to the guitar after the end");
+
+    player.unload();
+    file.deleteFile();
+}
+
 // THD компрессора на низкой ноте при самых быстрых attack / release: усиление не должно "дрожать" с волной
 static void testCompressorDistortion()
 {
@@ -3007,6 +3079,8 @@ int main()
     stage("testNewPedals");
     testNewPedals();
     std::printf(failures == 0 ? "ALL TESTS PASSED\n" : "%d FAILURE(S)\n", failures);
+    stage("testInputFilePlayer");
+    testInputFilePlayer();
     stage("testCompressorDistortion");
     testCompressorDistortion();
     stage("testStressAllEffects");

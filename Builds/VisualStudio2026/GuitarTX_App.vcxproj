@@ -193,6 +193,7 @@
     <ClCompile Include="..\..\Source\ModulationProcessor.cpp"/>
     <ClCompile Include="..\..\Source\WahProcessor.cpp"/>
     <ClCompile Include="..\..\Source\HarmonizerProcessor.cpp"/>
+    <ClCompile Include="..\..\Source\InputFilePlayer.cpp"/>
     <ClCompile Include="C:\Program Files\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.cpp">
       <ExcludedFromBuild>true</ExcludedFromBuild>
     </ClCompile>
@@ -3297,6 +3298,7 @@
     <ClInclude Include="..\..\Source\ModulationProcessor.h"/>
     <ClInclude Include="..\..\Source\WahProcessor.h"/>
     <ClInclude Include="..\..\Source\HarmonizerProcessor.h"/>
+    <ClInclude Include="..\..\Source\InputFilePlayer.h"/>
     <ClInclude Include="..\..\Source\GlobalTempo.h"/>
     <ClInclude Include="C:\Program Files\JUCE\modules\juce_audio_basics\audio_play_head\juce_AudioPlayHead.h"/>
     <ClInclude Include="C:\Program Files\JUCE\modules\juce_audio_basics\buffers\juce_AudioChannelSet.h"/>

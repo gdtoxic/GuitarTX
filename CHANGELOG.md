@@ -4,6 +4,14 @@ All notable changes to GuitarTX. Format: [Keep a Changelog](https://keepachangel
 
 ## [0.5.1] - 2026-11-05
 
+### Added
+- **Input file**: click **IN** above the input knob to play a WAV / AIFF / FLAC / MP3 through the whole rig —
+  **Replace** (instead of the guitar while it plays) or **Mix** (together with the guitar); Loop, file level
+  (+6 … −18 dB), Play / Stop next to the knob and as a MIDI action (**Input file**). The file is summed to mono
+  like the guitar input, resampled to the device rate; the DI recorder and LISTEN hear it too.
+- **Audio settings**: buffer size and round-trip latency line, a hint for the current driver type and a
+  **Driver panel** button (ASIO drivers that offer only one buffer size have it set in their own panel).
+
 ### Fixed
 - **Crackle at small audio buffers** with Harmonizer / Pitch: the harmonizer's pitch tracking is now ~4× lighter
   (short YIN window at 8 kHz) and the pitch shifter's splice search ~2× lighter — the worst audio block of the

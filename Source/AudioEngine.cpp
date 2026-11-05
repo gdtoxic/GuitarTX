@@ -104,6 +104,7 @@ void AudioEngine::createGraph()
     recorderInNode  = graph.addNode(recorder.createInputNode(),  std::nullopt, UpdateKind::none);
     recorderOutNode = graph.addNode(recorder.createOutputNode(), std::nullopt, UpdateKind::none);
 
+    inputPlayer = addFixedNode(std::make_unique<InputFilePlayer>(),    inputPlayerNode);
     meterIn  = addFixedNode(std::make_unique<MeterProcessor>("MeterIn"),  meterInNode);
     tuner    = addFixedNode(std::make_unique<TunerProcessor>(),           tunerNode);
     gain     = addFixedNode(std::make_unique<GainProcessor>(),            gainNode);
@@ -128,8 +129,9 @@ void AudioEngine::rebuildConnections()
         graph.removeConnection(connection, UpdateKind::none);
 
     std::vector<Node::Ptr> chain;
-    chain.reserve(rack.size() + 12);
+    chain.reserve(rack.size() + 13);
 
+    chain.push_back(inputPlayerNode);   // файл на входе (вместо гитары или вместе с ней)
     chain.push_back(recorderInNode);
     chain.push_back(listenNode);
     chain.push_back(meterInNode);

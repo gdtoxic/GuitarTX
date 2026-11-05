@@ -18,6 +18,10 @@ MIDI: MIDI button. Right-click a knob -> MIDI Learn (expression pedal), right-cl
      Tap tempo for Glitch. Program Change N -> preset N+1. Enable MIDI inputs in Settings.
 Recorder: REC button - DI (dry) + Wet (processed) WAV files in Documents\GuitarTX\Recordings.
      Re-amp (menu next to REC): plays a DI file through the current preset and records it again.
+Input file: click IN (above the input knob) - load a WAV / AIFF / FLAC / MP3, play it through the rig
+     instead of the guitar (Replace) or together with it (Mix), loop, level. Play / stop next to the knob.
+Audio buffer: Settings -> Audio. Many ASIO drivers offer only the buffer set in their own panel -
+     press Driver panel, choose 128 or 64 samples there.
 Drums: DRUMS button (play / stop next to it). Kits Doom / Metal / Industrial or your own WAV per track,
      32-step sequencer, 14 factory patterns, global tempo + Tap. Your patterns: %APPDATA%\GuitarTX\Patterns
      LISTEN: play a riff, stop - tempo and a matching beat are set. FOLLOW: drums start with your first note
